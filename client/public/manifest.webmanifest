@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "RentEase — Local rentals",
+  "short_name": "RentEase",
+  "description": "Find and rent useful items from your local community.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1f4f6",
+  "theme_color": "#315f82",
+  "icons": [
+    { "src": "/rentease-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
