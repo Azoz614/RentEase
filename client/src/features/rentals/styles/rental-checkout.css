@@ -1,0 +1,172 @@
+.checkout-dialog.rental-checkout {
+  width: min(1080px, calc(100% - 28px));
+  max-width: 1080px;
+  padding: 28px;
+}
+.rental-checkout .rental-checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.85fr);
+  align-items: start;
+  gap: 24px;
+  margin-top: 24px;
+}
+.rental-checkout .checkout-section,
+.rental-checkout .rental-order-summary {
+  padding: 22px;
+  border: 1px solid var(--re-line);
+  border-radius: 18px;
+  background: #fff;
+  margin-bottom: 18px;
+}
+.rental-checkout .checkout-section h3,
+.rental-checkout .rental-order-summary h3 {
+  margin: 0 0 14px;
+}
+.rental-checkout .rental-order-summary {
+  background: #fafcf8;
+}
+.rental-checkout .rental-order-summary > p {
+  color: var(--re-muted);
+  font-size: 13px;
+}
+.rental-checkout .checkout-date-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.rental-checkout .checkout-date-grid label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+.rental-checkout .checkout-date-grid input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 11px 8px;
+  border: 1px solid var(--re-line);
+  border-radius: 10px;
+  background: white;
+  font: inherit;
+  color: inherit;
+}
+.rental-checkout .checkout-location {
+  margin: 0;
+}
+.rental-checkout .checkout-location .re-location-picker {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.rental-checkout .checkout-location select {
+  width: 100%;
+}
+.rental-checkout .checkout-destination {
+  margin: 20px 0;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--re-line);
+}
+.rental-checkout .checkout-destination > span {
+  color: var(--re-muted);
+  font-size: 12px;
+}
+.rental-checkout .checkout-destination p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.rental-checkout .checkout-route-metrics {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 12px;
+}
+.rental-checkout .checkout-route-metrics > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+}
+.rental-checkout .checkout-route-metrics dt {
+  color: var(--re-muted);
+}
+.rental-checkout .checkout-route-metrics dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 650;
+}
+.rental-checkout .checkout-shop-routes {
+  margin: 14px 0;
+  font-size: 12px;
+}
+.rental-checkout .checkout-shop-routes summary {
+  cursor: pointer;
+  color: var(--re-primary);
+}
+.rental-checkout .checkout-shop-routes > div {
+  padding: 12px 0;
+}
+.rental-checkout .checkout-route-error {
+  color: #a92323;
+  font-size: 13px;
+}
+.rental-checkout .checkout-grand-total {
+  margin-top: 10px;
+  border-top: 2px solid var(--re-line);
+  color: var(--re-primary);
+  align-items: center;
+}
+.rental-checkout .checkout-grand-total b {
+  font-size: 24px;
+  text-align: right;
+}
+.rental-checkout .checkout-submit {
+  width: 100%;
+  margin-top: 20px;
+}
+.rental-checkout .checkout-route-loading {
+  padding: 18px 0;
+  font-size: 12px;
+  color: var(--re-muted);
+}
+.rental-checkout .checkout-loading-bar {
+  display: block;
+  height: 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e5ecdf, #f6f9f2, #e5ecdf);
+  background-size: 200% 100%;
+  animation: checkout-route-shimmer 1.4s ease-in-out infinite;
+}
+.rental-checkout .checkout-loading-bar:nth-child(2) {
+  width: 70%;
+}
+@keyframes checkout-route-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (max-width: 800px) {
+  .rental-checkout .rental-checkout-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+@media (max-width: 480px) {
+  .checkout-dialog.rental-checkout {
+    padding: 18px 14px;
+  }
+  .rental-checkout .checkout-section,
+  .rental-checkout .rental-order-summary {
+    padding: 16px;
+  }
+  .rental-checkout .checkout-date-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rental-checkout .checkout-loading-bar {
+    animation: none;
+  }
+}

@@ -1,14 +1,18 @@
 import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
-import { User } from '../src/model/user.mjs'
+import { User } from '../src/modules/users/user.model.mjs'
 
 function readHidden(prompt) {
   return new Promise((resolve, reject) => {
     const input = process.stdin
     process.stdout.write(prompt)
     if (!input.isTTY || !input.setRawMode) {
-      reject(new Error('Run this command in an interactive terminal so the password can be entered without echo.'))
+      reject(
+        new Error(
+          'Run this command in an interactive terminal so the password can be entered without echo.',
+        ),
+      )
       return
     }
     input.setRawMode(true)
@@ -51,7 +55,14 @@ async function main() {
     await existing.save()
     process.stdout.write(`Admin account ${email} updated.\n`)
   } else {
-    await User.create({ username: 'admin', email, phone: 'Not provided', password: passwordHash, role: 'admin', active: true })
+    await User.create({
+      username: 'admin',
+      email,
+      phone: 'Not provided',
+      password: passwordHash,
+      role: 'admin',
+      active: true,
+    })
     process.stdout.write(`Admin account ${email} created.\n`)
   }
 }

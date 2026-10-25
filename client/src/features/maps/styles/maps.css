@@ -1,0 +1,302 @@
+.re-map-panel,
+.re-location-picker {
+  background: #fff;
+  border: 1px solid #dfe5ee;
+  border-radius: 18px;
+  padding: 20px;
+  margin: 18px 0;
+  color: var(--re-ink);
+  box-shadow: 0 6px 24px #263c6010;
+}
+.re-map-panel h2,
+.re-map-panel h3 {
+  margin: 0 0 12px;
+}
+.re-map-panel p,
+.re-location-picker small {
+  color: var(--re-muted);
+  line-height: 1.6;
+}
+.re-map-frame {
+  position: relative;
+  margin: 14px 0;
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.re-map {
+  height: 320px;
+  width: 100%;
+  background: #f3f6fa;
+}
+.re-map-frame > p {
+  padding: 12px;
+  margin: 0;
+}
+.re-map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+}
+.re-map-panel button,
+.re-location-picker button,
+.re-map-panel select {
+  border: 1px solid #cbd6e6;
+  background: white;
+  color: var(--re-ink);
+  border-radius: 9px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    transform 0.18s;
+}
+.re-map-panel button:hover,
+.re-location-picker button:hover {
+  background: #eef4ff;
+}
+.re-map-panel button:disabled,
+.re-location-picker button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.re-map-panel .re-map-primary,
+.re-location-picker .re-map-primary {
+  background: #315bd6;
+  color: white;
+  border-color: #315bd6;
+}
+.re-map-panel label,
+.re-location-picker label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+  margin: 12px 0;
+}
+.re-map-panel input,
+.re-location-picker input,
+.re-location-picker textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px;
+  border: 1px solid #cbd6e6;
+  border-radius: 9px;
+  font: inherit;
+}
+.re-location-picker textarea {
+  min-height: 70px;
+}
+.re-location-picker > small {
+  display: block;
+  margin: 8px 0;
+}
+.re-suggestions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  max-height: 220px;
+  overflow: auto;
+}
+.re-suggestions button {
+  width: 100%;
+  text-align: left;
+  border: 0 !important;
+}
+.re-map-error {
+  color: #a72a32 !important;
+  background: #fff0f0;
+  padding: 12px;
+  border-radius: 8px;
+}
+.re-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+}
+.re-map-task {
+  padding: 18px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.re-map-task.is-selected {
+  border-color: #315bd6;
+  box-shadow: 0 0 0 2px #315bd622;
+}
+.re-map-task img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.re-map-status {
+  display: inline-block;
+  border-radius: 20px;
+  padding: 5px 10px;
+  background: #edf3ff;
+  color: #315bd6;
+  font-size: 12px;
+}
+.re-live {
+  color: var(--re-muted);
+}
+.re-map-attribution {
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  letter-spacing: normal;
+}
+.re-map-panel a {
+  color: var(--re-muted);
+}
+.re-map-panel details > summary {
+  cursor: pointer;
+  padding: 10px;
+  font-weight: 600;
+}
+.re-map-panel :focus-visible,
+.re-location-picker :focus-visible {
+  outline: 3px solid #6d9aff;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .re-map-panel,
+  .re-location-picker {
+    padding: 12px;
+  }
+  .re-map {
+    height: 270px;
+  }
+  .re-map-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .re-map-panel *,
+  .re-location-picker * {
+    transition: none !important;
+  }
+}
+.re-product-location {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+}
+.re-product-location > summary {
+  cursor: pointer;
+  color: var(--re-muted);
+  font-weight: 600;
+}
+.re-map-task {
+  animation: re-map-enter 0.22s ease-out;
+}
+.re-map-panel .re-map-actions small {
+  flex-basis: 100%;
+  line-height: 1.5;
+}
+.re-map-panel select {
+  max-width: 100%;
+  font: inherit;
+}
+.re-map-panel button:active,
+.re-location-picker button:active {
+  transform: translateY(1px);
+}
+.re-map-panel input:focus,
+.re-location-picker input:focus,
+.re-location-picker textarea:focus {
+  border-color: #315bd6;
+}
+.re-map-status {
+  text-transform: capitalize;
+}
+.re-map-frame [role='alert'] button {
+  margin-left: 8px;
+}
+.re-location-picker label {
+  position: relative;
+}
+@keyframes re-map-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .re-map-task {
+    animation: none;
+  }
+}
+.re-map.leaflet-container {
+  font-family: inherit;
+  z-index: 0;
+}
+.re-leaflet-marker {
+  background: none;
+  border: 0;
+}
+.re-leaflet-pin {
+  display: block;
+  position: relative;
+  width: 27px;
+  height: 27px;
+  border: 3px solid white;
+  border-radius: 50% 50% 50% 0;
+  background: var(--pin-color);
+  box-shadow: 0 3px 8px #1d31574d;
+  transform: rotate(-45deg);
+  margin: 2px;
+  transition: scale 0.18s;
+}
+.re-leaflet-pin::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  background: #fff;
+  border-radius: 50%;
+}
+.re-leaflet-pin.is-selected {
+  scale: 1.2;
+}
+.re-map .leaflet-control-attribution {
+  font:
+    10px/1.5 Arial,
+    sans-serif;
+  padding: 2px 5px;
+  max-width: 90%;
+}
+.re-map .leaflet-control-zoom a {
+  color: var(--re-ink);
+}
+.re-map .leaflet-marker-icon:focus-visible {
+  outline: 3px solid #6d9aff;
+  outline-offset: 5px;
+}
+.re-location-picker > label {
+  margin-bottom: 7px;
+}
+.re-location-picker > textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  border: 1px solid #cbd6e6;
+  border-radius: 9px;
+  padding: 11px;
+}
+.re-map .leaflet-tooltip {
+  white-space: normal;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .re-leaflet-pin {
+    transition: none;
+  }
+}

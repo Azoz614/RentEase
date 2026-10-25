@@ -1,41 +1,29 @@
-import express from 'express';
-import authRoutes from './routes/auth.js';
-import adminRoutes from './routes/admin.js';
-import rentalRoutes from './routes/rentals.js';
-import { requireUser } from './middleware/auth.mjs';
-import { User } from './model/user.mjs';
-import { fileURLToPath } from 'node:url';
+import { createApiRouter } from './routes/api.routes.js'
+import { errorHandler } from './middleware/error-handler.js'
+import express from 'express'
 
-const app = express();
-app.use(express.json({ limit: '22mb' }));
-app.use('/uploads', express.static(fileURLToPath(new URL('../uploads', import.meta.url))));
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api', rentalRoutes);
+import { fileURLToPath } from 'node:url'
+import mongoose from 'mongoose'
 
-app.get('/api/auth/me', requireUser, async (req, res) => {
-  const user = await User.findById(req.user._id).select('-password -identityFrontPath -identityBackPath').lean()
-  res.json({ user })
-});
+const app = express()
+app.use(express.json({ limit: '22mb' }))
+app.use('/uploads', express.static(fileURLToPath(new URL('../uploads', import.meta.url))))
+
+// Mount the specific prefix first so legacy auth middleware cannot intercept v1 login/public routes.
+app.use('/api/v1', createApiRouter())
+app.use('/api', createApiRouter())
 
 app.get('/', (req, res) => {
-  res.send('RentEase API is running');
-});
-
-app.use('/api', (_req, res) => {
-  res.status(404).json({ message: 'API endpoint not found.' })
+  res.send('RentEase API is running')
 })
 
-app.use((error, _req, res, _next) => {
-  console.error('API request failed:', error)
-  const status = error.status === 413 ? 413 : error.type === 'entity.parse.failed' ? 400 : 500
-  const message = status === 413
-    ? 'The upload is too large. Reduce photo sizes and try again.'
-    : status === 400
-      ? 'The request body contains invalid JSON.'
-      : 'The server could not complete this request.'
-  res.status(status).json({ message })
-});
+app.get('/health', (_req, res) => {
+  const ready = mongoose.connection.readyState === 1
+  res
+    .status(ready ? 200 : 503)
+    .json({ status: ready ? 'ok' : 'unavailable', database: ready ? 'connected' : 'disconnected' })
+})
 
+app.use(errorHandler)
 
-export default app;
+export default app

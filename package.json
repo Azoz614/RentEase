@@ -1,0 +1,11 @@
+{
+  "name": "rentease",
+  "private": true,
+  "scripts": {
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run start-dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "lint": "npm --prefix client run lint"
+  }
+}

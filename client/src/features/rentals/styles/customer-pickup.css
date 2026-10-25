@@ -1,0 +1,189 @@
+.customer-rentals .cr-pickup-section,
+.cr-rental-dialog .cr-pickup-section {
+  margin: 16px 0;
+  padding: 20px;
+  border: 1px solid #ccdce9;
+  border-radius: 18px;
+  background: linear-gradient(125deg, #f4f9fd, #edf4fa);
+  color: var(--re-ink);
+}
+.cr-pickup-section h3 {
+  margin: 8px 0;
+  font-size: 18px;
+}
+.cr-pickup-section p,
+.cr-cancellation-record p {
+  line-height: 1.7;
+  font-size: 14px;
+  margin: 8px 0 14px;
+}
+.cr-pickup-section.is-verified {
+  background: #edf8f1;
+  border-color: #b9d9c5;
+  color: var(--re-ink);
+}
+.cr-pickup-section small {
+  display: block;
+}
+.cr-cancellation-record {
+  margin: 16px 0;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid #e2cece;
+  color: #714043;
+  background: #fbf5f5;
+}
+.cr-otp-dialog {
+  text-align: center;
+  max-width: 480px;
+}
+.cr-otp-emblem {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  background: #e9f1fb;
+  color: var(--re-ink);
+  font-size: 30px;
+  margin: 0 auto 20px;
+}
+.cr-otp-emblem.is-success {
+  background: #e4f5ea;
+  color: #246040;
+  animation: cr-otp-success 0.4s ease both;
+}
+.cr-otp-booking {
+  padding: 14px;
+  margin: 20px 0;
+  border: 1px solid #e1e8ef;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+.cr-otp-booking small {
+  display: block;
+  color: var(--re-muted);
+  margin-top: 6px;
+}
+.cr-otp-fieldset {
+  padding: 0;
+  margin: 22px 0 10px;
+  border: 0;
+  min-width: 0;
+}
+.cr-otp-fieldset legend {
+  width: 100%;
+  font-size: 13px;
+  color: var(--re-ink);
+  margin-bottom: 12px;
+}
+.cr-otp-inputs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+}
+.cr-otp-inputs input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  height: 56px;
+  border: 1px solid #aebfce;
+  border-radius: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 24px;
+  color: var(--re-ink);
+  background: #fff;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.cr-otp-inputs input:focus-visible {
+  outline: 3px solid #6293c4;
+  outline-offset: 2px;
+  border-color: #315f82;
+}
+.cr-otp-inputs.has-error input {
+  border-color: #ba565c;
+}
+.cr-otp-timer,
+.cr-otp-footnote {
+  color: var(--re-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.cr-otp-start-message {
+  margin: 12px 0 0;
+  color: var(--re-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.cr-otp-submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
+}
+.cr-otp-resend {
+  margin: 16px auto 8px;
+}
+.cr-cancel-reason {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  color: var(--re-ink);
+  margin-top: 16px;
+}
+.cr-cancel-reason textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 12px;
+  font: inherit;
+  border-radius: 12px;
+  border: 1px solid #bdcbd7;
+  resize: vertical;
+}
+.cr-action-dialog.is-closing {
+  animation: cr-otp-close 0.15s ease both;
+}
+.cr-notice {
+  animation: cr-otp-success 0.25s ease both;
+}
+@keyframes cr-otp-success {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cr-otp-close {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (max-width: 420px) {
+  .cr-otp-inputs {
+    gap: 5px;
+  }
+  .cr-otp-inputs input {
+    height: 47px;
+    border-radius: 9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cr-otp-emblem.is-success,
+  .cr-action-dialog.is-closing,
+  .cr-notice {
+    animation: none;
+  }
+  .cr-otp-inputs input {
+    transition: none;
+  }
+}
