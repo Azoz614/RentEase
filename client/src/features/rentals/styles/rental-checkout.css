@@ -22,6 +22,16 @@
 .rental-checkout .rental-order-summary h3 {
   margin: 0 0 14px;
 }
+.rental-checkout .delivery-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rental-checkout .delivery-options label { border: 2px solid var(--re-line); border-radius: 15px; padding: 18px;
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer; transition: background .2s, border-color .2s; }
+.rental-checkout .delivery-options label:has(input:checked) { background: #f0f7e9; border-color: var(--re-primary); }
+.rental-checkout .delivery-options label:has(input:focus-visible) { outline: 3px solid #8dac6c; outline-offset: 3px; }
+.rental-checkout .delivery-options input { accent-color: var(--re-primary); width: 18px; height: 18px; flex-shrink: 0; }
+.rental-checkout .delivery-options b, .rental-checkout .delivery-options small { display: block; }
+.rental-checkout .delivery-options small { margin-top: 7px; color: var(--re-muted); font-size: 12px; line-height: 1.6; }
+@media (max-width: 480px) { .rental-checkout .delivery-options { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .rental-checkout .delivery-options label { transition: none; } }
 .rental-checkout .rental-order-summary {
   background: #fafcf8;
 }

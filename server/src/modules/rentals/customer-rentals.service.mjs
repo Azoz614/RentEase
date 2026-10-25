@@ -5,7 +5,7 @@ import { cancellationWindowHours, cancellationEligibility } from './cancellation
 
 // Explicit customer DTOs: never return a rental document or populated administrator wholesale.
 export const customerRentalFields =
-  '_id customerId items startDate endDate addressSnapshot createdAt updatedAt status subtotal total deliveryMethod deliveryWorkflowVersion deliveryReturnRequestedAt address deliveryFee distanceKm etaMinutes deliveryDestination deliveryQuotedAt estimatedArrivalAt couponCode discountAmount invoiceNumber invoiceIssuedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection.note returnInspection.inspectedAt returnVerifiedAt cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt statusHistory.status statusHistory.previousStatus statusHistory.at payment.status payment.provider payment.method payment.rentalPaid payment.depositHeld payment.depositRefunded payment.paidAt payment.refundedAt payment.adjustments.type payment.adjustments.amount payment.adjustments.note payment.adjustments.createdAt'
+  '_id customerId items startDate endDate addressSnapshot createdAt updatedAt status subtotal total deliveryMethod deliveryWorkflowVersion deliveryReturnRequestedAt deliveryAssignmentRequestedAt returnMethod returnDestination address deliveryFee distanceKm etaMinutes deliveryDestination deliveryQuotedAt estimatedArrivalAt couponCode discountAmount invoiceNumber invoiceIssuedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection.note returnInspection.inspectedAt returnVerifiedAt cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt statusHistory.status statusHistory.previousStatus statusHistory.at payment.status payment.provider payment.method payment.rentalPaid payment.depositHeld payment.depositRefunded payment.paidAt payment.refundedAt payment.adjustments.type payment.adjustments.amount payment.adjustments.note payment.adjustments.createdAt'
 
 export async function customerRentalViews(rentals, { details = false } = {}) {
   const cancellationHours = await cancellationWindowHours()
@@ -55,6 +55,9 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
       couponCode: rental.couponCode || '',
       deliveryMethod: rental.deliveryMethod,
       deliveryWorkflowVersion: rental.deliveryWorkflowVersion,
+      deliveryAssignmentRequestedAt: rental.deliveryAssignmentRequestedAt || null,
+      returnMethod: rental.returnMethod || null,
+      deliveryDestination: rental.deliveryDestination || null,
       deliveryReturnRequestedAt: rental.deliveryReturnRequestedAt || null,
       deliveryFee: rental.deliveryFee || 0,
       invoiceNumber: rental.invoiceNumber || null,

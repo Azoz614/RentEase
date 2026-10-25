@@ -1,3 +1,4 @@
+import ReturnMethodDialog from '../components/ReturnMethodDialog.jsx'
 import { useDeliveryRefresh } from '../../delivery-partner/hooks/useDeliveryEvents.js'
 import { shortId, filters, isUpcoming, isPast } from '../utils/customerRentalPresentation.js'
 
@@ -26,6 +27,7 @@ export default function CustomerRentals({
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedRental, setSelectedRental] = useState(null)
   const [pickupRental, setPickupRental] = useState(null)
+  const [returnRental, setReturnRental] = useState(null)
   const detailsTrigger = useRef(null)
   const refreshButton = useRef(null)
   const [loading, setLoading] = useState(initialRentals.length === 0)
@@ -127,16 +129,14 @@ export default function CustomerRentals({
       ),
     [],
   )
-  const requestReturnCode = async (rental) => {
+  const requestReturnCode = (rental) => setReturnRental(rental)
+  const assignPartner = async (rental) => {
     if (inFlight.current) return
     inFlight.current = true
-    setBusy(`return-${rental._id}`)
+    setBusy(`assign-${rental._id}`)
     setError('')
     try {
-      const path =
-        rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
-          ? `/api/delivery/rentals/${rental._id}/return`
-          : `/api/requests/${rental._id}/return/send`
+      const path = `/api/delivery/rentals/${rental._id}/assign`
       const result = await api(path, {
         method: 'POST',
         body: '{}',
@@ -144,14 +144,13 @@ export default function CustomerRentals({
       if (!mounted.current) return
       setNotice(
         result.message ||
-          'A return verification code was sent to your registered email. Give it to an administrator to complete the return.',
+          'Finding nearby delivery partners.',
       )
       await load()
-    } catch (returnFailure) {
+    } catch (failure) {
       if (mounted.current)
         setError(
-          returnFailure.message ||
-            'We could not send a return verification code. Please try again.',
+          failure.message || 'We could not start the rider search. Please try again.',
         )
     } finally {
       inFlight.current = false
@@ -164,7 +163,7 @@ export default function CustomerRentals({
         const inGroup =
           filter === 'all' ||
           (filter === 'upcoming' && isUpcoming(rental)) ||
-          (filter === 'active' && rental.status === 'active') ||
+          (filter === 'active' && ['active', 'return_in_transit'].includes(rental.status)) ||
           (filter === 'past' && isPast(rental))
         const inStatus =
           statusFilter === 'all' ||
@@ -402,6 +401,7 @@ export default function CustomerRentals({
               onViewDetails={viewDetails}
               onPickup={setPickupRental}
               onReturn={requestReturnCode}
+              onAssign={assignPartner}
             />
           ))
         )}
@@ -443,9 +443,9 @@ export default function CustomerRentals({
         <div>
           <h2>A little code. Extra peace of mind.</h2>
           <p>
-            Verify your pickup email code here, then meet an administrator for the physical
-            handover. An administrator sends a separate return code when your items come back. Codes
-            expire after 5 minutes.
+            Every handover has its own email code. For self return, the shop receives the code and
+            you verify it here. With rider collection, your rider and the shop verify each transfer.
+            Codes expire after 5 minutes.
           </p>
         </div>
         <span className="cr-guide-tag">
@@ -466,6 +466,10 @@ export default function CustomerRentals({
           onPickup={setPickupRental}
           onReturn={requestReturnCode}
         />
+      )}
+      {returnRental && (
+        <ReturnMethodDialog rental={rentals.find((r) => r._id === returnRental._id) || returnRental}
+          api={api} onClose={() => setReturnRental(null)} onUpdated={async (message) => { setNotice(message); await load() }} />
       )}
       {pickupRental && (
         <CustomerPickupModal

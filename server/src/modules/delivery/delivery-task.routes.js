@@ -13,7 +13,11 @@ import {
   verifyTaskOtp,
   progressTask,
   getTask,
+  assignDelivery,
+  quoteReturn,
+  retryReturnSearch,
 } from './delivery-task.service.mjs'
+import { selfReturnState, sendSelfReturn, verifySelfReturn } from '../rentals/self-return.service.mjs'
 import { drivingRoute } from './delivery-quote.service.mjs'
 import { identityRate } from '../identity/identity-security.service.mjs'
 
@@ -38,8 +42,26 @@ router.post('/delivery/tasks/:id/accept', async (req, res) =>
 router.post('/delivery/tasks/:id/decline', async (req, res) =>
   res.json(await declineTask(req.params.id, req.user)),
 )
+router.post('/delivery/tasks/:id/search', async (req, res) =>
+  res.json(await retryReturnSearch(req.params.id, req.user)),
+)
 router.post('/delivery/rentals/:id/return', async (req, res) =>
-  res.json(await requestReturn(req.params.id, req.user)),
+  res.json(await requestReturn(req.params.id, req.user, req.body)),
+)
+router.post('/delivery/rentals/:id/assign', async (req, res) =>
+  res.json(await assignDelivery(req.params.id, req.user)),
+)
+router.post('/delivery/rentals/:id/return/quote', async (req, res) =>
+  res.json(await quoteReturn(req.params.id, req.user, req.body)),
+)
+router.get('/delivery/rentals/:id/self-return', async (req, res) =>
+  res.json(await selfReturnState(req.params.id, req.user)),
+)
+router.post('/delivery/rentals/:id/self-return/send', async (req, res) =>
+  res.json(await sendSelfReturn(req.params.id, req.user, req.body.providerId)),
+)
+router.post('/delivery/rentals/:id/self-return/verify', async (req, res) =>
+  res.json(await verifySelfReturn(req.params.id, req.user, req.body)),
 )
 router.post('/delivery/tasks/:id/ready', async (req, res) =>
   res.json(await markReady(req.params.id, req.user)),

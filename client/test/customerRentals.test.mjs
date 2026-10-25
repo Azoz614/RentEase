@@ -89,7 +89,7 @@ test('active customers see recorded pickup evidence and separate return-code ins
   const { props } = setup([rental])
   render(React.createElement(CustomerRentals, props))
   assert.ok(await screen.findByRole('heading', { name: 'Enjoy your rental' }))
-  assert.ok(screen.getByText(/new return code/))
+  assert.ok(screen.getByText(/Choose self return or rider collection/))
   const progress = screen.getByRole('list', { name: 'Rental progress' })
   assert.equal(progress.querySelectorAll('.is-complete').length, 3)
   assert.equal(screen.queryByRole('button', { name: 'Cancel booking' }), null)

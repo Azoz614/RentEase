@@ -47,7 +47,7 @@ export default function RentalCheckoutDialog({
   const discount =
     pricing?.discountAmount ??
     (appliedCoupon?.subtotal === subtotal ? appliedCoupon.discountAmount : 0)
-  const total = delivery
+  const total = !deliveryMethod ? null : delivery
     ? feeQuote
       ? (pricing?.total ??
         rentalSubtotal - discount + feeQuote.deliveryFee + (feeQuote.returnCollectionFee || 0))
@@ -125,11 +125,11 @@ export default function RentalCheckoutDialog({
                 <input
                   type="radio"
                   name="delivery"
-                  checked={!delivery}
+                  checked={deliveryMethod === 'pickup'}
                   onChange={() => setDeliveryMethod('pickup')}
                 />
                 <span>
-                  <b>Pick up yourself</b>
+                  <b>Self Pickup</b>
                   <small>No delivery fee</small>
                 </span>
               </label>
@@ -141,7 +141,7 @@ export default function RentalCheckoutDialog({
                   onChange={() => setDeliveryMethod('partner')}
                 />
                 <span>
-                  <b>Deliver to me</b>
+                  <b>Delivery Partner</b>
                   <small>Rs. 50 per driving kilometer</small>
                 </span>
               </label>
@@ -196,7 +196,7 @@ export default function RentalCheckoutDialog({
           )}
           {delivery && !mapsConfigured && !feeQuote && !quoteLoading && !quoteError && (
             <p className="re-map-error" role="alert">
-              Delivery routing is unavailable. Configure the backend Geoapify key or choose pickup.
+              Delivery routing is temporarily unavailable. Try again or choose Self Pickup.
             </p>
           )}
           {delivery && quoteError && (
@@ -269,7 +269,7 @@ export default function RentalCheckoutDialog({
           <div className="checkout-total checkout-grand-total" aria-live="polite">
             <span>Final total</span>
             <b>
-              {total === null ? (quoteLoading ? 'Calculating…' : 'Awaiting route') : money(total)}
+              {total === null ? (!deliveryMethod ? 'Choose a delivery method' : quoteLoading ? 'Calculating…' : 'Awaiting route') : money(total)}
             </b>
           </div>
           {deposits > 0 && (
@@ -291,6 +291,7 @@ export default function RentalCheckoutDialog({
               invalidPeriod ||
               !cartProducts.length ||
               !profileReady ||
+              !deliveryMethod ||
               (delivery && (quoteLoading || !feeQuote))
             }
             onClick={checkout}

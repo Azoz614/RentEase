@@ -74,6 +74,14 @@ const taskSchema = new mongoose.Schema(
     },
     offeredPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     declinedPartnerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    search: {
+      state: { type: String, enum: ['waiting', 'searching', 'exhausted', 'assigned'], default: 'waiting' },
+      radiusMeters: { type: Number, default: 2000 },
+      round: { type: Number, default: 0 },
+      startedAt: Date,
+      nextExpansionAt: Date,
+      exhaustedAt: Date,
+    },
     acceptedAt: Date,
     sharing: { type: Boolean, default: false },
     locationUpdatedAt: Date,
@@ -98,4 +106,5 @@ const taskSchema = new mongoose.Schema(
 )
 taskSchema.index({ rentalId: 1, providerId: 1, direction: 1 }, { unique: true })
 taskSchema.index({ 'pickup.location': '2dsphere' })
+taskSchema.index({ status: 1, 'search.state': 1, 'search.nextExpansionAt': 1 })
 export const DeliveryTask = mongoose.model('DeliveryTask', taskSchema)

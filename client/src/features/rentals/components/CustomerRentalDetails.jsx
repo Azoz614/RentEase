@@ -1,3 +1,4 @@
+import DeliveryTaskBoard from '../../delivery-partner/components/DeliveryTaskBoard.jsx'
 import { formatCurrency as money } from '../../../utils/currency.js'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import '../styles/customer-rental-details.css'
@@ -233,6 +234,7 @@ export default function CustomerRentalDetails({
                 Email-verified handovers
               </span>
             </div>
+            {rental.deliveryWorkflowVersion === 2 && <DeliveryTaskBoard api={api} role="user" rentalId={rental._id} onReturn={() => onReturn(rental)} />}
             <PickupSection rental={rental} onVerify={onPickup} busy={busy} />
             {rental.status === 'active' && !rental.returnVerifiedAt && (
               <section className="cr-pickup-section" aria-label="Customer return request">
@@ -244,10 +246,10 @@ export default function CustomerRentalDetails({
                 </h3>
                 <p>
                   {rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
-                    ? 'Request collection below. A nearby partner will collect your items using a customer email code; the shop confirms final receipt with a separate code.'
+                    ? 'Choose self return or ask a nearby rider to collect. Every handover is verified by email.'
                     : rental.returnVerification?.status === 'pending'
                       ? 'A return code was sent to your registered email. Give it to an administrator to complete the return.'
-                      : 'Request a return code, then provide it to an administrator when you return the items.'}
+                      : 'Choose self return or delivery partner collection. For self return, verify the shop’s receipt code here.'}
                 </p>
                 <button
                   className="cr-button cr-primary"
@@ -265,8 +267,8 @@ export default function CustomerRentalDetails({
                       : rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
                         ? rental.deliveryReturnRequestedAt
                           ? 'Collection requested'
-                          : 'Request return collection'
-                        : 'Return'}
+                          : rental.returnMethod === 'pickup' ? 'Continue self return' : 'Return'
+                        : rental.returnMethod === 'pickup' ? 'Continue self return' : 'Return'}
                 </button>
               </section>
             )}
@@ -401,7 +403,7 @@ export default function CustomerRentalDetails({
                 <h3>Verified with you, at every handover.</h3>
                 <p>
                   {rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
-                    ? 'The assigned partner verifies separate shop collection, customer delivery and customer return codes. Only authorized shop staff can verify final return receipt.'
+                    ? 'Shop staff verify the rider’s collection and final return codes. The rider verifies customer delivery and return collection codes.'
                     : 'Verify your pickup email code here, then authorized rental staff confirm physical handover. Return verification uses a separate email code.'}
                 </p>
                 <div>
@@ -573,7 +575,7 @@ export function LifecycleTimeline({ rental }) {
     ['Returned', isReturned, rental.returnVerifiedAt || returned?.at],
   ]
   const current =
-    rental.status === 'confirmed' ? 0 : rental.status === 'active' ? 2 : isReturned ? 4 : -1
+    rental.status === 'confirmed' ? 0 : rental.status === 'active' ? 2 : rental.status === 'return_in_transit' ? 3 : isReturned ? 4 : -1
   return (
     <ol className="cr-lifecycle-timeline" aria-label="Detailed rental lifecycle">
       {steps.map(([label, complete, timestamp], index) => (

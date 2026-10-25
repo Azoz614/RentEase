@@ -16,7 +16,7 @@ import {
 } from './handover.service.mjs'
 
 const fields =
-  'customerId items startDate endDate status statusHistory createdAt updatedAt total deliveryMethod pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection pickupVerifiedBy returnVerifiedAt returnVerifiedBy cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt payment.status'
+  'customerId items startDate endDate status statusHistory createdAt updatedAt total deliveryMethod returnMethod selfReturns.providerId selfReturns.status selfReturns.verifiedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection pickupVerifiedBy returnVerifiedAt returnVerifiedBy cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt payment.status'
 const statusLabels = { confirmed: 'BOOKED', active: 'ON_RENTAL', returned: 'RETURNED' }
 const serialize = ({ handover, ...rental }) => ({
   ...rental,
@@ -78,7 +78,7 @@ export function createRentalVerificationRouter(dependencies = {}) {
       return res.status(400).json({ message: 'Choose a valid rental status.' })
     const page = Math.max(1, Math.min(10000, Number.parseInt(req.query.page, 10) || 1))
     const staffScope = {
-      deliveryWorkflowVersion: { $ne: 2 },
+      $and: [{ $or: [{ deliveryWorkflowVersion: { $ne: 2 } }, { returnMethod: 'pickup' }] }],
       ...(req.user.role === 'rental_shop'
         ? { 'items.providerId': req.user._id, items: { $not: { $elemMatch: { providerId: { $ne: req.user._id } } } } }
         : {}),

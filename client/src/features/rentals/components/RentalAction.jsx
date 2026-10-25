@@ -1,6 +1,10 @@
 import { Glyph } from './Glyph.jsx'
 
 export function RentalAction({ rental, onVerify }) {
+  if (rental.status === 'active' && rental.returnMethod === 'pickup')
+    return <span className="handover-waiting">Give your email receipt code to the customer after receiving the items.</span>
+  if (rental.returnMethod === 'partner' && ['active', 'return_in_transit'].includes(rental.status))
+    return <span className="handover-waiting">Follow the assigned rider in delivery tracking.</span>
   if (rental.status === 'confirmed') {
     if (
       rental.requiresPickupPreparation &&

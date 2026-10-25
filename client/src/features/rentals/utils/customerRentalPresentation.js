@@ -104,7 +104,7 @@ export function nextStep(rental) {
     return {
       title: 'Enjoy your rental',
       description:
-        'When you return your items, an administrator will email you a new return code. Share it with them at the handover.',
+        'Choose self return or rider collection. For self return, ask the shop for its email receipt code and verify it here.',
       icon: 'box',
       tone: 'blue',
     }

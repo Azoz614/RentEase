@@ -130,6 +130,8 @@ export async function customerReturnChallenge({ rentalId, actor }) {
 }
 
 export function assertHandoverEligible(rental, type) {
+  if (type === 'return' && rental?.returnMethod)
+    throw failure(409, 'RETURN_METHOD_SELECTED', 'Complete the selected return method in the customer return screen.')
   if (rental?.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner')
     throw failure(
       409,

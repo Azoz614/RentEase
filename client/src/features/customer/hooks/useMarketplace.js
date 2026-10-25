@@ -32,7 +32,7 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
   const [appliedCategory, setAppliedCategory] = useState('all')
-  const [deliveryMethod, setDeliveryMethod] = useState('pickup')
+  const [deliveryMethod, setDeliveryMethod] = useState('')
   const [mapsConfigured, setMapsConfigured] = useState(true)
   const [deliverySelection, setDeliverySelection] = useState({})
   const [couponInput, setCouponInput] = useState('')
@@ -283,6 +283,10 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   })
 
   const checkout = async () => {
+    if (!['pickup', 'partner'].includes(deliveryMethod)) {
+      setError('Choose Self Pickup or Delivery Partner before confirming your rental.')
+      return
+    }
     if (deliveryMethod === 'partner' && (!feeQuote || quoteLoading)) return
     setError('')
     setMessage('')

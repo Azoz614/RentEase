@@ -28,6 +28,7 @@ export function RentalCard({
   onViewDetails,
   onPickup,
   onReturn,
+  onAssign,
 }) {
   const state = rental.status || 'pending'
   const step = nextStep(rental)
@@ -236,6 +237,13 @@ export function RentalCard({
           </div>
         </div>
         <div className="cr-booking-actions">
+          {state === 'confirmed' && rental.deliveryMethod === 'partner' && (
+            <button className="cr-button cr-primary" disabled={Boolean(busy)}
+              onClick={() => rental.deliveryAssignmentRequestedAt ? onViewDetails(rental) : onAssign(rental)}>
+              <Symbol name="box" size={17} />
+              {busy === `assign-${rental._id}` ? 'Finding riders…' : rental.deliveryAssignmentRequestedAt ? 'Track delivery' : 'Assign Delivery Partner'}
+            </button>
+          )}
           {rental.status === 'active' && !rental.returnVerifiedAt && (
             <button
               className="cr-button cr-primary"
@@ -253,8 +261,8 @@ export function RentalCard({
                   : rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
                     ? rental.deliveryReturnRequestedAt
                       ? 'Collection requested'
-                      : 'Request return collection'
-                    : 'Return'}
+                      : rental.returnMethod === 'pickup' ? 'Continue self return' : 'Return'
+                    : rental.returnMethod === 'pickup' ? 'Continue self return' : 'Return'}
             </button>
           )}
           {rental.invoiceNumber && (

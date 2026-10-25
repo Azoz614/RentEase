@@ -16,6 +16,9 @@ import { requireTransactions } from '../../services/mongo-transactions.mjs'
 import { createHttpError as fail } from '../../utils/http-error.mjs'
 
 export const SEARCH_RADIUS_METERS = 10000
+// Search state lives in MongoDB so restarts and multiple API processes resume the same rounds.
+export const SEARCH_RADII = [2000, 5000, 10000, 25000, 50000, 100000, 20040000]
+const searchTimeout = () => Math.max(5, Math.min(300, Number(process.env.DELIVERY_SEARCH_TIMEOUT_SECONDS) || 30)) * 1000
 const TTL = 5 * 60000,
   COOLDOWN = 60000,
   MAX_ATTEMPTS = 5
@@ -55,8 +58,9 @@ export async function createDeliveryTasks(
   direction = 'delivery',
   routes = new Map(),
 ) {
-  if (rental.deliveryMethod !== 'partner') return
-  if (!rental.deliveryDestination?.location)
+  if (direction === 'delivery' && rental.deliveryMethod !== 'partner') return
+  const collection = rental.returnDestination?.location ? rental.returnDestination : rental.deliveryDestination
+  if (!(direction === 'return' ? collection?.location : rental.deliveryDestination?.location))
     throw fail(
       409,
       'LOCATION_REQUIRED',
@@ -87,7 +91,7 @@ export async function createDeliveryTasks(
           productIds: items.map((i) => i.productId),
           titles: items.map((i) => i.title),
           pickup: returning
-            ? rental.deliveryDestination
+            ? collection
             : { address: shipment.shopAddress, location: shipment.origin },
           destination: returning
             ? { address: shipment.shopAddress, location: shipment.origin }
@@ -100,6 +104,11 @@ export async function createDeliveryTasks(
             : shipment.etaMinutes,
           fee: returning ? shipment.returnFee || 0 : shipment.fee,
           status: 'available',
+          search: {
+            state: returning ? 'searching' : 'waiting',
+            radiusMeters: SEARCH_RADII[0], round: 0,
+            ...(returning ? { startedAt: new Date(), nextExpansionAt: new Date() } : {}),
+          },
           history: [{ status: 'available', action: 'delivery.offered', at: new Date() }],
         },
       },
@@ -109,7 +118,10 @@ export async function createDeliveryTasks(
   rental.deliveryWorkflowVersion = 2
 }
 
+let broadcasting = false
 export async function broadcastAvailableTasks() {
+  if (broadcasting) return
+  broadcasting = true
   try {
     const legacyJobs = await RentalRequest.find({
       deliveryMethod: 'partner',
@@ -123,14 +135,36 @@ export async function broadcastAvailableTasks() {
         .filter((i) => i.assignedPartner && !['delivered', 'returned'].includes(i.deliveryStatus))
         .map((i) => i.assignedPartner),
     )
-    for await (const task of DeliveryTask.find({ status: 'available' }).lean().cursor()) {
-      const rental = await RentalRequest.findById(task.rentalId).select('status').lean()
-      if (!rental || !['confirmed', 'active', 'return_in_transit'].includes(rental.status)) continue
+    const now = new Date()
+    // Existing return tasks were created only by an explicit collection request.
+    await DeliveryTask.updateMany({ direction: 'return', status: 'available', 'search.state': { $exists: false } },
+      { $set: { search: { state: 'searching', radiusMeters: SEARCH_RADII[0], round: 0,
+        startedAt: now, nextExpansionAt: now } } })
+    for await (const task of DeliveryTask.find({ status: 'available', 'search.state': 'searching',
+      'search.nextExpansionAt': { $lte: now } }).lean().cursor()) {
+      const rental = await RentalRequest.findById(task.rentalId).select('status returnMethod deliveryReturnRequestedAt').lean()
+      if (!rental || (task.direction === 'delivery' ? rental.status !== 'confirmed'
+        : !['active', 'return_in_transit'].includes(rental.status) ||
+          (rental.returnMethod ? rental.returnMethod !== 'partner' : !rental.deliveryReturnRequestedAt))) continue
+      const round = task.search.round || 0
+      if (round >= SEARCH_RADII.length) {
+        await DeliveryTask.updateOne({ _id: task._id, status: 'available',
+          'search.state': 'searching', 'search.round': round },
+          { $set: { 'search.state': 'exhausted', 'search.exhaustedAt': now }, $inc: { __v: 1 } })
+        continue
+      }
+      const radius = SEARCH_RADII[round]
+      const claimed = await DeliveryTask.updateOne({ _id: task._id, status: 'available',
+        'search.state': 'searching', 'search.round': round, 'search.nextExpansionAt': { $lte: now } },
+        { $set: { 'search.radiusMeters': radius,
+          'search.nextExpansionAt': new Date(now.getTime() + searchTimeout()) },
+          $inc: { 'search.round': 1, __v: 1 } })
+      if (!claimed.modifiedCount) continue
       const near = await PartnerPresence.find({
         online: true,
         expiresAt: { $gt: new Date() },
         location: {
-          $near: { $geometry: point(task.pickup.location), $maxDistance: SEARCH_RADIUS_METERS },
+          $near: { $geometry: point(task.pickup.location), $maxDistance: radius },
         },
         partnerId: { $nin: task.declinedPartnerIds },
       })
@@ -146,12 +180,14 @@ export async function broadcastAvailableTasks() {
         .lean()
       const fresh = partners.filter((p) => !task.offeredPartnerIds.some((id) => same(id, p._id)))
       if (!fresh.length) continue
-      const offered = await DeliveryTask.updateOne(
-        { _id: task._id, status: 'available' },
-        { $addToSet: { offeredPartnerIds: { $each: fresh.map((p) => p._id) } } },
-      )
-      if (!offered.modifiedCount) continue
-      await Notification.bulkWrite(
+      await requireTransactions()
+      await mongoose.connection.transaction(async (session) => {
+        const offered = await DeliveryTask.updateOne(
+          { _id: task._id, status: 'available', 'search.state': 'searching' },
+          { $addToSet: { offeredPartnerIds: { $each: fresh.map((p) => p._id) } } }, { session },
+        )
+        if (!offered.matchedCount) return
+        await Notification.bulkWrite(
         fresh.map((p) => ({
           updateOne: {
             filter: { userId: p._id, deliveryTaskId: task._id, type: 'delivery_offer' },
@@ -168,12 +204,44 @@ export async function broadcastAvailableTasks() {
             },
             upsert: true,
           },
-        })),
-      )
+        })), { session },
+        )
+      })
     }
   } catch (error) {
     console.error('Delivery offer refresh deferred:', error.name)
+  } finally {
+    broadcasting = false
   }
+}
+
+export function startDeliveryDispatch() {
+  const timer = setInterval(() => broadcastAvailableTasks(), 3000)
+  timer.unref()
+  broadcastAvailableTasks()
+  return () => clearInterval(timer)
+}
+
+export async function assignDelivery(rentalId, actor) {
+  if (actor.role !== 'user') throw fail(403, 'CUSTOMER_REQUIRED', 'Only the booking customer can assign a partner.')
+  await identityRate(actor._id, 'delivery-dispatch', 30)
+  await requireTransactions()
+  await mongoose.connection.transaction(async (session) => {
+    const rental = await RentalRequest.findOne({ _id: validId(rentalId), customerId: actor._id }).session(session)
+    if (!rental || rental.status !== 'confirmed' || rental.deliveryMethod !== 'partner' ||
+      !rental.items.every((i) => i.decision === 'accepted'))
+      throw fail(409, 'APPROVAL_REQUIRED', 'The shop must approve every rental item before you assign a partner.')
+    await createDeliveryTasks(rental, session)
+    const now = new Date()
+    await DeliveryTask.updateMany({ rentalId, direction: 'delivery', status: 'available',
+      $or: [{ 'search.state': { $in: ['waiting', 'exhausted'] } }, { 'search.state': { $exists: false } }] },
+      { $set: { search: { state: 'searching', radiusMeters: SEARCH_RADII[0], round: 0,
+        startedAt: now, nextExpansionAt: now }, offeredPartnerIds: [], declinedPartnerIds: [] }, $inc: { __v: 1 } }, { session })
+    rental.deliveryAssignmentRequestedAt ||= now
+    await rental.save({ session })
+  })
+  await broadcastAvailableTasks()
+  return { message: 'Finding nearby available riders. We will expand the search automatically.' }
 }
 
 export async function setPresence(actor, input) {
@@ -250,6 +318,7 @@ export async function getTask(id, actor, session) {
 }
 
 export async function listTasks(actor) {
+  await broadcastAvailableTasks()
   let tasks,
     presence,
     legacyBusy = false
@@ -281,9 +350,7 @@ export async function listTasks(actor) {
         status: 'available',
         offeredPartnerIds: actor._id,
         declinedPartnerIds: { $ne: actor._id },
-        'pickup.location': {
-          $near: { $geometry: point(presence.location), $maxDistance: SEARCH_RADIUS_METERS },
-        },
+        'search.state': 'searching',
       })
         .select('+otp')
         .limit(50)
@@ -299,13 +366,28 @@ export async function listTasks(actor) {
     tasks = await DeliveryTask.find(scope).select('+otp').sort({ updatedAt: -1 }).limit(150)
   }
   const rentals = await RentalRequest.find({ _id: { $in: tasks.map((t) => t.rentalId) } })
-    .select('status payment.status readyForPickupAt deliveryReturnRequestedAt')
+    .select('status payment.status readyForPickupAt deliveryReturnRequestedAt returnMethod')
     .lean()
   const people = await User.find({
     _id: { $in: tasks.flatMap((t) => [t.assignedPartner, t.providerId]).filter(Boolean) },
   })
     .select('username shopName phone')
     .lean()
+  const trackingScopes = tasks
+    .filter((task) => task.assignedPartner && !terminal.includes(task.status))
+    .map((task) => ({
+      rentalId: task.rentalId,
+      productId: { $in: task.productIds },
+      partnerId: task.assignedPartner,
+    }))
+  const positions = trackingScopes.length
+    ? await DeliveryLocation.find({
+        $or: trackingScopes,
+        expiresAt: { $gt: new Date() },
+      })
+        .select('rentalId productId partnerId location accuracy updatedAt expiresAt')
+        .lean()
+    : []
   return {
     online: Boolean(presence),
     busy: Boolean(actor.activeDeliveryTask || legacyBusy),
@@ -320,12 +402,21 @@ export async function listTasks(actor) {
         const rental = rentals.find((r) => same(r._id, t.rentalId)),
           p = people.find((p) => same(p._id, t.assignedPartner))
         const provider = people.find((p) => same(p._id, t.providerId))
+        const live =
+          !terminal.includes(t.status) &&
+          positions.find(
+            (position) =>
+              same(position.rentalId, t.rentalId) &&
+              same(position.partnerId, t.assignedPartner) &&
+              t.productIds.some((id) => same(id, position.productId)),
+          )
         return {
           id: t._id,
           rentalId: t.rentalId,
           direction: t.direction,
           titles: t.titles,
           status: t.status,
+          search: t.search,
           pickup: t.pickup,
           destination: t.destination,
           distanceKm: t.distanceKm ?? null,
@@ -335,7 +426,16 @@ export async function listTasks(actor) {
           paid: ['authorized', 'paid'].includes(rental.payment?.status),
           ready: Boolean(t.readyAt || rental.readyForPickupAt),
           returnRequested: Boolean(rental.deliveryReturnRequestedAt),
+          returnMethod: rental.returnMethod || null,
           partner: p ? { id: p._id, name: p.username, phone: p.phone || '' } : null,
+          live: live
+            ? {
+                location: live.location,
+                accuracy: live.accuracy,
+                updatedAt: live.updatedAt,
+                expiresAt: live.expiresAt,
+              }
+            : null,
           shop: provider?.shopName || provider?.username || 'Rental shop',
           canManage: owned(t, actor),
           canOperate: assigned(t, actor),
@@ -383,7 +483,7 @@ export async function acceptTask(id, actor) {
     online: true,
     expiresAt: { $gt: new Date() },
     location: {
-      $near: { $geometry: point(task.pickup.location), $maxDistance: SEARCH_RADIUS_METERS },
+      $near: { $geometry: point(task.pickup.location), $maxDistance: task.search?.radiusMeters || SEARCH_RADIUS_METERS },
     },
   }).lean()
   if (!near)
@@ -433,9 +533,10 @@ export async function acceptTask(id, actor) {
         assignedPartner: null,
         offeredPartnerIds: actor._id,
         declinedPartnerIds: { $ne: actor._id },
+        'search.state': 'searching',
       },
       {
-        $set: { assignedPartner: actor._id, acceptedAt: new Date(), status, sharing: true, locationUpdatedAt: near.updatedAt },
+        $set: { assignedPartner: actor._id, acceptedAt: new Date(), status, sharing: true, locationUpdatedAt: near.updatedAt, 'search.state': 'assigned' },
         $push: { history: history(actor, status, 'delivery.accepted') },
         $inc: { __v: 1 },
       },
@@ -465,6 +566,7 @@ export async function acceptTask(id, actor) {
         partnerId: actor._id, location: point(near.location), accuracy: near.accuracy,
         updatedAt: near.updatedAt, expiresAt: near.expiresAt } }, upsert: true,
     } })), { session })
+    await Notification.deleteMany({ deliveryTaskId: task._id, type: 'delivery_offer' }, { session })
     await notifyTask(
       accepted,
       'A delivery partner accepted your ' +
@@ -487,35 +589,74 @@ export async function declineTask(id, actor) {
   return { message: 'Request declined. Other nearby partners can still accept it.' }
 }
 
-export async function requestReturn(rentalId, actor) {
+export async function retryReturnSearch(id, actor) {
+  if (actor.role !== 'user') throw fail(403, 'CUSTOMER_REQUIRED', 'Only the customer can restart collection.')
+  await identityRate(actor._id, 'delivery-dispatch', 30)
+  await requireTransactions()
+  await mongoose.connection.transaction(async (session) => {
+    const task = await getTask(id, actor, session)
+    const rental = await activeRental(task, session)
+    if (task.direction !== 'return' || task.status !== 'available' || task.search?.state !== 'exhausted' || !['active', 'return_in_transit'].includes(rental.status))
+      throw fail(409, 'SEARCH_CHANGED', 'This collection is already searching or assigned.')
+    task.search = { state: 'searching', radiusMeters: SEARCH_RADII[0], round: 0,
+      startedAt: new Date(), nextExpansionAt: new Date() }
+    task.offeredPartnerIds = []
+    task.declinedPartnerIds = []
+    await task.save({ session })
+    rental.statusHistory.push({ status: rental.status, by: actor._id, action: 'return.search_restarted' })
+    await rental.save({ session })
+  })
+  await broadcastAvailableTasks()
+  return { message: 'Finding available return riders again.' }
+}
+
+export async function quoteReturn(rentalId, actor, input = {}) {
   if (actor.role !== 'user')
     throw fail(403, 'CUSTOMER_REQUIRED', 'Only the booking customer can request collection.')
-  const snapshot = await RentalRequest.findOne({
-    _id: validId(rentalId),
-    customerId: actor._id,
-    deliveryWorkflowVersion: 2,
-    deliveryMethod: 'partner',
-  }).lean()
-  if (!snapshot || snapshot.status !== 'active')
-    throw fail(
-      409,
-      'INVALID_RETURN',
-      'Only a delivered rental currently on rental can be collected.',
-    )
-  if (snapshot.deliveryReturnRequestedAt)
-    return { message: 'Return collection is already requested.' }
-  const routes = new Map()
-  for (const shipment of snapshot.shipments) {
-    if (shipment.returnDistanceKm != null) continue
-    try {
-      routes.set(
-        String(shipment.providerId),
-        await drivingRoute(snapshot.deliveryDestination.location, shipment.origin),
-      )
-    } catch {
-      /* Collection can be requested during a routing outage. No distance or travel time is invented. */
-    }
+  await identityRate(actor._id, 'return-quote', 30)
+  const rental = await RentalRequest.findOne({ _id: validId(rentalId), customerId: actor._id }).lean()
+  if (!rental || rental.status !== 'active' || !rental.pickupVerifiedAt || rental.returnMethod === 'pickup')
+    throw fail(409, 'INVALID_RETURN', 'Only an active rental without a self return in progress can request collection.')
+  const collection = input.collection || rental.deliveryDestination
+  if (!collection?.location || typeof collection.address !== 'string' || collection.address.trim().length < 5 || collection.address.length > 600)
+    throw fail(400, 'LOCATION_REQUIRED', 'Confirm a complete collection address and map pin.')
+  const location = { address: collection.address.trim(), location: point(collection.location) }
+  const ids = [...new Set(rental.items.filter((i) => i.decision === 'accepted').map((i) => String(i.providerId)))]
+  const providers = await User.find({ _id: { $in: ids }, active: true,
+    $or: [{ role: 'admin' }, { role: 'rental_shop', shopStatus: 'approved' }] }).select('shopLocation shopAddress shopName username').lean()
+  if (providers.length !== ids.length) throw fail(409, 'PROVIDER_UNAVAILABLE', 'A responsible shop is unavailable. Contact the shop before returning.')
+  const shipments = []
+  for (const provider of providers) {
+    const saved = rental.shipments.find((s) => same(s.providerId, provider._id))
+    const origin = saved?.origin || provider.shopLocation
+    if (!origin) throw fail(409, 'LOCATION_REQUIRED', 'The shop must confirm its return location before collection.')
+    const route = await drivingRoute(location.location, origin)
+    shipments.push({ providerId: String(provider._id), origin, shopAddress: saved?.shopAddress || provider.shopAddress,
+      shopName: saved?.shopName || provider.shopName || provider.username,
+      returnDistanceKm: route.distanceKm, returnEtaMinutes: route.etaMinutes,
+      // Preserve the return fee already agreed and included in the original booking.
+      returnFee: saved?.returnFee || 0 })
   }
+  const quote = { rentalId: String(rental._id), customerId: String(actor._id), collection: location,
+    shipments, fee: shipments.reduce((sum, s) => sum + s.returnFee, 0),
+    distanceKm: shipments.reduce((sum, s) => sum + s.returnDistanceKm, 0), expiresAt: Date.now() + 300000 }
+  const payload = Buffer.from(JSON.stringify(quote)).toString('base64url')
+  return { ...quote, quoteToken: payload + '.' + hash('return-quote:' + payload) }
+}
+
+export async function requestReturn(rentalId, actor, input = {}) {
+  if (actor.role !== 'user') throw fail(403, 'CUSTOMER_REQUIRED', 'Only the booking customer can request collection.')
+  validId(rentalId)
+  const snapshot = await RentalRequest.findOne({ _id: rentalId, customerId: actor._id }).lean()
+  if (snapshot?.status === 'active' && snapshot.deliveryReturnRequestedAt)
+    return { message: 'Return collection is already requested.' }
+  const [payload, signature, extra] = String(input.quoteToken || '').split('.')
+  if (!payload || extra || !/^[a-f0-9]{64}$/.test(signature || '') || !equal(signature, hash('return-quote:' + payload)))
+    throw fail(400, 'QUOTE_REQUIRED', 'Review the collection route before requesting a partner.')
+  let quote
+  try { quote = JSON.parse(Buffer.from(payload, 'base64url').toString()) } catch { throw fail(400, 'INVALID_QUOTE', 'Recalculate your collection route.') }
+  if (quote.rentalId !== String(rentalId) || quote.customerId !== String(actor._id) || quote.expiresAt <= Date.now())
+    throw fail(409, 'QUOTE_EXPIRED', 'Your collection quote expired. Recalculate the route.')
   await requireTransactions()
   await mongoose.connection.transaction(async (session) => {
     const rental = await RentalRequest.findOne({
@@ -530,7 +671,16 @@ export async function requestReturn(rentalId, actor) {
         'The booking changed. Refresh before requesting collection.',
       )
     if (rental.deliveryReturnRequestedAt) return
-    await createDeliveryTasks(rental, session, 'return', routes)
+    if (rental.returnMethod === 'pickup' || rental.returnOtpVerifiedAt || rental.selfReturns.some((c) => c.status === 'verified'))
+      throw fail(409, 'RETURN_IN_PROGRESS', 'Self return is already in progress.')
+    rental.returnMethod = 'partner'
+    rental.returnDestination = quote.collection
+    for (const shipment of quote.shipments) {
+      const saved = rental.shipments.find((s) => same(s.providerId, shipment.providerId))
+      if (saved) Object.assign(saved, shipment)
+      else rental.shipments.push(shipment)
+    }
+    await createDeliveryTasks(rental, session, 'return')
     rental.deliveryReturnRequestedAt = new Date()
     for (const item of rental.items.filter((i) => i.decision === 'accepted')) {
       item.assignedPartner = undefined
@@ -569,7 +719,8 @@ async function activeRental(task, session) {
   if (
     !rental ||
     rental.deliveryWorkflowVersion !== 2 ||
-    rental.deliveryMethod !== 'partner' ||
+    (task.direction === 'delivery' ? rental.deliveryMethod !== 'partner'
+      : rental.returnMethod ? rental.returnMethod !== 'partner' : !rental.deliveryReturnRequestedAt) ||
     !['confirmed', 'active', 'return_in_transit'].includes(rental.status) ||
     !task.productIds.every((id) =>
       rental.items.some(
@@ -633,12 +784,13 @@ const stageFor = (task, kind) => {
 async function otpContext(task, kind, actor, verifying = false, session) {
   if (!stageFor(task, kind))
     throw fail(409, 'INVALID_HANDOVER', 'This handover is not the next stage for this task.')
-  if (kind === 'shop_return' && verifying ? !owned(task, actor) : !assigned(task, actor))
+  const providerVerifies = verifying && ['shop_pickup', 'shop_return'].includes(kind)
+  if (providerVerifies ? !owned(task, actor) : !assigned(task, actor))
     throw fail(
       403,
       'WRONG_VERIFIER',
-      kind === 'shop_return' && verifying
-        ? 'Only the responsible shop owner or an administrator can verify the shop return.'
+      providerVerifies
+        ? 'Only the responsible shop owner or an administrator can verify this shop handover.'
         : 'Only the assigned delivery partner can perform this handover.',
     )
   const rental = await activeRental(task, session)
@@ -653,22 +805,14 @@ async function otpContext(task, kind, actor, verifying = false, session) {
       'The rental must be paid and the shop must mark these items ready before collection.',
     )
   const recipientId =
-    kind === 'shop_pickup'
-      ? task.providerId
-      : kind === 'shop_return'
-        ? task.assignedPartner
-        : task.customerId
+    ['shop_pickup', 'shop_return'].includes(kind) ? task.assignedPartner : task.customerId
   const query = User.findById(recipientId).select('email active role shopStatus')
   if (session) query.session(session)
   const recipient = await query
   if (
     recipient &&
-    (kind === 'shop_pickup'
-      ? !['admin', 'rental_shop'].includes(recipient.role) ||
-        (recipient.role === 'rental_shop' && recipient.shopStatus !== 'approved')
-      : kind === 'shop_return'
-        ? recipient.role !== 'delivery_partner'
-        : recipient.role !== 'user')
+    (['shop_pickup', 'shop_return'].includes(kind)
+      ? recipient.role !== 'delivery_partner' : recipient.role !== 'user')
   )
     throw fail(
       409,
@@ -684,7 +828,7 @@ async function otpContext(task, kind, actor, verifying = false, session) {
   return { recipient, rental }
 }
 
-export async function sendTaskOtp(id, kind, actor) {
+export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationOtp) {
   await identityRate(actor._id, 'delivery-otp-send', 20)
   const task = await getTask(id, actor),
     { recipient } = await otpContext(task, kind, actor)
@@ -726,7 +870,7 @@ export async function sendTaskOtp(id, kind, actor) {
     shop_return: 'confirm receipt at the rental shop',
   }
   try {
-    await sendRegistrationOtp(recipient.email, code, {
+    await sendEmail(recipient.email, code, {
       subject: 'RentEase delivery handover verification',
       text:
         'Your RentEase handover code is ' +
@@ -736,7 +880,7 @@ export async function sendTaskOtp(id, kind, actor) {
         ' for booking #' +
         task.rentalId +
         '. ' +
-        (kind === 'shop_return'
+        (['shop_pickup', 'shop_return'].includes(kind)
           ? 'Give this code to the authorized shop owner or administrator.'
           : 'Give this code to your assigned delivery partner.'),
     })
@@ -897,6 +1041,7 @@ export async function verifyTaskOtp(id, input, actor) {
     )
   if (
     input.kind === 'shop_return' &&
+    input.inspectionNote &&
     (typeof input.inspectionNote !== 'string' ||
       input.inspectionNote.trim().length < 5 ||
       input.inspectionNote.trim().length > 1000)
@@ -936,7 +1081,7 @@ export async function verifyTaskOtp(id, input, actor) {
     current.otp.hash = undefined
     if (terminal.includes(status)) current.completedAt = new Date()
     if (terminal.includes(status)) current.sharing = false
-    if (input.kind === 'shop_return') current.inspectionNote = input.inspectionNote.trim()
+    if (input.kind === 'shop_return') current.inspectionNote = input.inspectionNote?.trim() || 'Return receipt confirmed by email verification.'
     current.verifications.push({
       kind: input.kind,
       at: new Date(),

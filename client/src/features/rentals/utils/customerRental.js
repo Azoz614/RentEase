@@ -15,6 +15,8 @@ export const hasRentalPayment = (rental) =>
     ['authorized', 'paid', 'refunded', 'partially_refunded'].includes(rental.payment?.status),
   )
 export function customerRentalStatus(rental) {
+  if (rental.status === 'active' && rental.deliveryReturnRequestedAt) return 'Return collection requested'
+  if (rental.status === 'active' && rental.returnMethod === 'pickup') return 'Self return in progress'
   if (rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner') {
     if (rental.status === 'confirmed') return 'Awaiting delivery'
     if (rental.status === 'active' && rental.deliveryReturnRequestedAt)
