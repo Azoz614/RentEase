@@ -2,6 +2,7 @@ export const labels = {
   pending: 'Pending approval',
   confirmed: 'Booked',
   active: 'Renting',
+  return_in_transit: 'Return in transit',
   returned: 'Returned',
   completed: 'Completed',
   cancelled: 'Cancelled',

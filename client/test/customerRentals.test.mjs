@@ -73,14 +73,14 @@ before(async () => {
 afterEach(() => cleanup())
 after(async () => { await vite?.close(); dom.window.close() })
 
-test('booked customers see pickup guidance and their customer verification action', async () => {
+test('booked customers see receipt code guidance without shop handover controls', async () => {
   const { props } = setup()
   render(React.createElement(CustomerRentals, props))
   assert.ok(await screen.findByRole('heading', { name: 'You’re ready for pickup' }))
   assert.ok(screen.getByText('a***@example.test'))
-  assert.ok(screen.getByText(/administrator can also email you a six-digit pickup code/))
+  assert.ok(screen.getByText(/shop sends a six-digit code to your email and private inbox/))
   assert.equal(screen.queryByRole('textbox', { name: /Code digit/ }), null)
-  assert.ok(screen.getByRole('button', { name: 'Verify pickup' }))
+  assert.equal(screen.queryByRole('button', { name: /Verify pickup|Send pickup OTP/ }), null)
   assert.equal(screen.queryByRole('button', { name: 'Review payment' }), null)
 })
 
@@ -235,7 +235,7 @@ test('clicking a rental card retrieves its complete details through the customer
   assert.ok(within(dialog).getByText('2 days'))
   assert.ok(within(dialog).getByText('Payment method'))
   assert.ok(calls.some((call) => call.path === '/api/requests/67abcd123456789000000001'))
-  assert.ok(within(dialog).getByRole('button', { name: 'Verify pickup' }))
+  assert.equal(within(dialog).queryByRole('button', { name: 'Verify pickup' }), null)
 })
 
 test('cards open with Enter or Space and return focus to the card when details close', async () => {
@@ -318,72 +318,12 @@ test('empty customers can browse items and the complete details dialog passes st
   assert.deepEqual(result.violations.map((violation) => violation.id), [])
 })
 
-test('customer pickup sends a code, supports paste and keyboard navigation, and does not start the rental', async () => {
-  const { props, calls } = setup()
-  const user = userEvent.setup({ document: dom.window.document })
+test('pending self pickup shows recipient guidance and never calls customer send or verify APIs', async () => {
+  const { props, calls } = setup([fixture({ pickupVerification: { status: 'pending' } })])
   render(React.createElement(CustomerRentals, props))
-  await user.click(await screen.findByRole('button', { name: 'Verify pickup' }))
-  const dialog = screen.getByRole('dialog')
-  const first = await within(dialog).findByRole('textbox', { name: 'Code digit 1' })
-  await waitFor(() => assert.equal(first.disabled, false))
-  await user.click(first); await user.paste('654321')
-  assert.equal(within(dialog).getByRole('textbox', { name: 'Code digit 6' }).value, '1')
-  await user.keyboard('{ArrowLeft}')
-  assert.ok(document.activeElement === within(dialog).getByRole('textbox', { name: 'Code digit 5' }))
-  assert.ok(within(dialog).getByRole('button', { name: /Resend in/ }).disabled)
-  await user.click(within(dialog).getByRole('button', { name: 'Verify email code' }))
-  assert.ok(await within(dialog).findByRole('heading', { name: 'Email verified' }))
-  assert.ok(screen.getByText('Pickup verified · awaiting handover', { selector: 'span' }))
-  assert.ok(!screen.queryByRole('button', { name: 'Verify pickup' }))
-  const verification = calls.find((call) => call.path?.endsWith('/pickup/verify'))
-  assert.equal(JSON.parse(verification.settings.body).code, '654321')
-  assert.equal(calls.filter((call) => call.path?.endsWith('/pickup/send')).length, 1)
-  assert.ok(!screen.queryByText('On rental', { selector: '.cr-status' }))
-  const result = await axe.run(dialog, { rules: { 'color-contrast': { enabled: false } } })
-  assert.deepEqual(result.violations.map((violation) => violation.id), [])
-})
-
-test('customer can resume a challenge without sending another email and invalid codes show feedback', async () => {
-  const { props, calls } = setup([fixture({ pickupVerification: { status: 'pending' } })], { resume: true, invalidOtp: true })
-  const user = userEvent.setup({ document: dom.window.document })
-  render(React.createElement(CustomerRentals, props))
-  await user.click(await screen.findByRole('button', { name: 'Continue verification' }))
-  const first = screen.getByRole('textbox', { name: 'Code digit 1' })
-  await waitFor(() => assert.equal(first.disabled, false))
-  await user.click(first); await user.paste('123456')
-  await user.click(screen.getByRole('button', { name: 'Verify email code' }))
-  assert.ok(await screen.findByRole('alert'))
-  assert.equal(first.value, '')
-  assert.equal(calls.filter((call) => call.path?.endsWith('/pickup/send')).length, 0)
-  assert.ok(!screen.queryByRole('heading', { name: 'Email verified' }))
-})
-
-test('a failed resend clears the invalidated challenge instead of accepting the previous code', async () => {
-  const { props } = setup([fixture()], { allowResend: true, failResend: true })
-  const user = userEvent.setup({ document: dom.window.document })
-  render(React.createElement(CustomerRentals, props))
-  await user.click(await screen.findByRole('button', { name: 'Verify pickup' }))
-  const first = screen.getByRole('textbox', { name: 'Code digit 1' })
-  await waitFor(() => assert.equal(first.disabled, false))
-  await user.click(first); await user.paste('123456')
-  await user.click(screen.getByRole('button', { name: 'Resend code' }))
-  assert.ok(await screen.findByRole('alert'))
-  assert.equal(first.value, '')
-  assert.ok(first.closest('fieldset').disabled)
-  assert.ok(screen.getByRole('button', { name: 'Verify email code' }).disabled)
-})
-
-test('customer OTP expiration and mail delivery errors leave verification disabled', async () => {
-  for (const options of [{ expired: true }, { failEmail: true }]) {
-    const { props } = setup([fixture()], options)
-    const user = userEvent.setup({ document: dom.window.document })
-    const rendered = render(React.createElement(CustomerRentals, props))
-    await user.click(await screen.findByRole('button', { name: 'Verify pickup' }))
-    if (options.expired) assert.ok(await screen.findByText('Code expired. Request a new code.'))
-    else assert.ok(await screen.findByRole('alert'))
-    assert.ok(screen.getByRole('button', { name: 'Verify email code' }).disabled)
-    rendered.unmount()
-  }
+  assert.ok(await screen.findByText(/Share it with the shop after receiving your items/))
+  assert.equal(screen.queryByRole('button', { name: /Continue verification|Verify pickup|Send OTP/ }), null)
+  assert.equal(calls.filter((c) => c.path?.includes('/pickup/send') || c.path?.includes('/pickup/verify')).length, 0)
 })
 
 test('cancelled bookings retain reason and time but never show pickup, return or cancellation controls', async () => {

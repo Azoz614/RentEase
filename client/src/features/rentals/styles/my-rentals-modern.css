@@ -1,0 +1,104 @@
+.customer-rentals.cr-modern { --cr-ink: #192f2a; --cr-muted: #63756e; --cr-line: #e0e8e2; --cr-blue: #147565; }
+
+/* Toolbar: tabs, search, status and refresh in one full-width row, pinned under the site navigation. */
+.cr-modern .cr-sticky-toolbar { position: sticky; z-index: 15; top: var(--cr-sticky-top, 0px); display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px; width: 100%; margin: 0 0 16px; padding: 10px 0; background: color-mix(in srgb, var(--re-background, #f5f7f5) 94%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid #e3ebe5; }
+.cr-modern .cr-filters { flex: none; gap: 3px; background: #edf2ee; padding: 4px; border-radius: 11px; flex-wrap: wrap; }
+.cr-modern .cr-filters button { border: 0; padding: 7px 10px; border-radius: 8px; white-space: nowrap; font-size: 12.5px; }
+.cr-modern .cr-filters button[aria-pressed="true"] { color: #126655; background: #fff; box-shadow: 0 2px 6px #183b2b0c; }
+.cr-modern .cr-refresh { flex: none; min-height: 38px; padding: 8px 12px; font-size: 12.5px; white-space: nowrap; }
+.cr-modern .cr-search { flex: 1 1 220px; min-width: 200px; min-height: 38px; border-color: #dce6df; }
+.cr-modern .cr-status-filter { flex: none; }
+.cr-modern .cr-status-filter select { min-height: 38px; }
+
+/* Cards sit side by side in rows; group headings span the full row. */
+.cr-modern .cr-rental-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); align-items: stretch; gap: 14px; }
+.cr-modern .cr-rental-list > .cr-skeleton, .cr-modern .cr-rental-list > .cr-empty, .cr-modern .cr-rental-list > p { grid-column: 1 / -1; }
+.cr-modern .cr-group-label { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 650; margin: 6px 0 -4px; color: #253e32; letter-spacing: -.2px; }
+.cr-group-label > span { font-size: 11.5px; padding: 3px 7px; border-radius: 6px; background: #eaf1eb; color: #52735e; }
+.cr-modern .cr-rental-list > .cr-group-label { grid-column: 1 / -1; margin: 12px 0 0; }
+.cr-modern .cr-rental-list > .cr-group-label:first-child { margin-top: 0; }
+
+/* Compact rental card stacked top to bottom: every detail kept, footer aligned across a row. */
+.cr-modern .cr-rental-card { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto auto; grid-template-areas: 'image' 'header' 'content' 'footer' 'details'; border-radius: 15px; border: 1px solid #dfe9e2; box-shadow: 0 3px 12px #183b2b06; transition: box-shadow .2s, border-color .2s, translate .2s; }
+.cr-modern .cr-rental-card:hover { translate: 0 -2px; }
+.cr-modern .cr-rental-card:hover { box-shadow: 0 10px 28px #183b2b10; border-color: #a8c7b2; }
+.cr-modern .cr-card-cover { grid-area: image; display: grid; place-items: center; position: relative; height: 128px; overflow: hidden; background: linear-gradient(145deg, #ecf3e8, #dbe8de); color: #9db29c; }
+.cr-modern .cr-card-cover svg { width: 30px; height: 30px; }
+.cr-modern .cr-card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cr-modern .cr-card-cover > span { position: absolute; left: 7px; bottom: 7px; padding: 3px 7px; border-radius: 6px; color: #fff; background: #183b2bba; font-size: 10.5px; backdrop-filter: blur(8px); }
+.cr-modern .cr-card-header { grid-area: header; flex-wrap: wrap; gap: 6px 10px; padding: 9px 14px; background: #fcfdfb; }
+.cr-modern .cr-booking-id, .cr-modern .cr-booking-id > small { font-size: 11px; }
+.cr-modern .cr-status { font-size: 11.5px; padding: 4px 9px; }
+.cr-modern .cr-card-layout { grid-area: content; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr auto; padding: 0; gap: 0; }
+.cr-modern .cr-card-main { display: grid; align-content: start; gap: 9px; padding: 12px 14px; }
+.cr-modern .cr-items { gap: 7px; margin: 0; }
+.cr-modern .cr-item { gap: 10px; }
+.cr-modern .cr-item-thumb { width: 38px; height: 38px; border-radius: 9px; }
+.cr-modern .cr-item-thumb svg { width: 18px; height: 18px; }
+.cr-modern .cr-item h2 { font-size: 15.5px; line-height: 1.3; margin: 0; }
+.cr-modern .cr-item h3 { font-size: 13.5px; margin: 0; }
+.cr-modern .cr-item p { font-size: 11.5px; line-height: 1.45; }
+.cr-modern .cr-dates { display: flex; gap: 10px; justify-content: flex-start; padding: 7px 10px; background: #f7faf6; border: 1px solid #e4ece2; border-radius: 9px; }
+.cr-modern .cr-dates > div { gap: 7px; }
+.cr-modern .cr-dates svg { width: 15px; height: 15px; }
+.cr-modern .cr-dates small { font-size: 10.5px; margin-bottom: 1px; }
+.cr-modern .cr-dates b { font-size: 12px; line-height: 1.35; }
+.cr-modern .cr-progress { margin: 2px 0 0; }
+.cr-modern .cr-progress li:not(:last-child)::after { top: 10px; left: 26px; }
+.cr-modern .cr-progress-dot { width: 21px; height: 21px; font-size: 10.5px; }
+.cr-modern .cr-progress b { font-size: 11px; line-height: 1.35; margin-top: 3px; }
+.cr-modern .cr-progress small { font-size: 10.5px; margin-top: 1px; line-height: 1.35; }
+.cr-modern .cr-pickup-section, .cr-modern .cr-cancellation-record { margin: 0; padding: 10px 12px; border-radius: 11px; }
+.cr-modern .cr-pickup-section h3 { margin: 2px 0; font-size: 14px; }
+.cr-modern .cr-pickup-section p, .cr-modern .cr-cancellation-record p { margin: 3px 0 6px; font-size: 12.5px; line-height: 1.5; }
+.cr-modern .cr-fulfilment { font-size: 12px; gap: 6px; flex-wrap: wrap; }
+.cr-modern .cr-fulfilment a { color: #126655; text-decoration: none; font-weight: 650; }
+.cr-modern .cr-next-step { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 10px; border: 0; border-top: 1px solid #e4ece4; border-radius: 0; padding: 10px 14px; background: #f4f8f2; }
+.cr-modern .cr-next-icon { grid-row: span 3; width: 30px; height: 30px; margin: 0; }
+.cr-modern .cr-next-step > p, .cr-modern .cr-next-step > .cr-button, .cr-modern .cr-next-step > .cr-email-destination { grid-column: 2; justify-self: start; }
+.cr-modern .cr-next-icon svg { width: 16px; height: 16px; }
+.cr-modern .cr-next-step .cr-eyebrow { font-size: 10px; margin: 0; }
+.cr-modern .cr-next-step h3 { font-size: 14px; line-height: 1.35; margin: 2px 0; }
+.cr-modern .cr-next-step > p { font-size: 12px; line-height: 1.5; margin: 0 0 6px; }
+.cr-modern .cr-next-step .cr-button { min-height: 34px; padding: 6px 11px; font-size: 12px; }
+.cr-modern .cr-email-destination { font-size: 11.5px; }
+.cr-modern .cr-card-footer { grid-area: footer; flex-wrap: wrap; padding: 10px 14px; gap: 10px; background: #fafcf9; }
+.cr-modern .cr-card-footer .cr-booking-actions { justify-content: flex-start; width: 100%; }
+.cr-modern .cr-costs { gap: 16px; }
+.cr-modern .cr-costs small { font-size: 10.5px; margin-bottom: 2px; }
+.cr-modern .cr-costs b { font-size: 15px; }
+.cr-modern .cr-costs span { font-size: 11px; }
+.cr-modern .cr-booking-actions { gap: 8px 12px; }
+.cr-modern .cr-booking-actions .cr-button { min-height: 34px; padding: 6px 12px; font-size: 12.5px; }
+.cr-modern .cr-view-details { width: auto; margin: 0; }
+.cr-modern .cr-details { grid-area: details; }
+.cr-modern .cr-details summary { padding: 8px 14px; font-size: 11.5px; }
+.cr-modern .cr-state-cancelled { opacity: .88; }
+
+/* Rental details dialog */
+.cr-rental-dialog.cr-detail-modern { border-radius: 22px; border: 1px solid #dce8df; box-shadow: 0 28px 100px #122d2a40; }
+.cr-detail-modern .cr-detail-heading { background: #f2f8f1; border-bottom: 1px solid #e0e8e2; padding: 24px 28px; }
+.cr-detail-modern .cr-detail-heading h2 { font-size: 24px; letter-spacing: -.7px; }
+.cr-detail-modern .cr-detail-scroll { background: #f8faf7; padding: 24px; }
+.cr-detail-modern .cr-detail-section { border: 1px solid #e1e9e0; background: #fff; border-radius: 15px; }
+.cr-detail-modern .cr-detail-columns { gap: 16px; }
+.cr-detail-modern .cr-detail-product { border-color: #e1e9e0; border-radius: 13px; }
+
+/* Medium screens: tabs take the first line, the search, status and refresh share the next. */
+@media (max-width: 1180px) {
+  .cr-modern .cr-filters { flex-basis: 100%; }
+}
+@media (max-width: 680px) {
+  .cr-modern .cr-sticky-toolbar { padding: 8px 0; gap: 8px; }
+  .cr-modern .cr-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .cr-modern .cr-filters button { padding: 7px 9px; }
+  .cr-modern .cr-search { min-width: 0; flex-basis: 100%; }
+  .cr-modern .cr-status-filter, .cr-modern .cr-refresh { flex: 1; }
+  .cr-modern .cr-status-filter select { width: 100%; }
+  .cr-modern .cr-card-cover { height: 112px; }
+  .cr-modern .cr-card-header, .cr-modern .cr-card-main, .cr-modern .cr-next-step, .cr-modern .cr-card-footer { padding-left: 12px; padding-right: 12px; }
+  .cr-modern .cr-dates { gap: 6px; padding: 7px 8px; }
+  .cr-detail-modern .cr-detail-scroll { padding: 15px; }
+  .cr-detail-modern .cr-detail-heading { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .cr-modern .cr-rental-card { transition: none; animation: none; } }

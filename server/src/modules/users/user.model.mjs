@@ -27,6 +27,11 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 10,
     },
+    sessionVersion: { type: Number, default: 0, select: false },
+    // Wrong passwords entered while accepting rentals; no default so a missing count reads as null.
+    approvalPasswordFailures: { type: Number, select: false },
+    approvalPasswordLockedUntil: { type: Date, select: false },
+    googleSubject: { type: String, select: false },
     role: {
       type: String,
       enum: ['user', 'delivery_partner', 'rental_shop', 'admin'],
@@ -57,6 +62,8 @@ const userSchema = new mongoose.Schema(
     addressLocation: { latitude: Number, longitude: Number },
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
     loyaltyPoints: { type: Number, default: 0, min: 0 },
+    // Level rewards spent on bookings; a level is every 10 points (see loyalty.service.mjs).
+    loyaltyRewardsUsed: { type: Number, default: 0, min: 0 },
     trustScore: { type: Number, default: 50, min: 0, max: 100 },
     identityStatus: {
       type: String,
@@ -73,5 +80,6 @@ const userSchema = new mongoose.Schema(
 )
 
 userSchema.index({ shopLocation: '2dsphere' })
+userSchema.index({ googleSubject: 1 }, { unique: true, partialFilterExpression: { googleSubject: { $type: 'string' } } })
 userSchema.index({ 'addresses.location': '2dsphere' })
 export const User = mongoose.model('User', userSchema)

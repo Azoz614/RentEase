@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import mongoose from 'mongoose'
 import { RentalRequest } from '../rentals/rental.model.mjs'
 import { User } from '../users/user.model.mjs'
 import { recordAudit } from '../../services/audit.service.js'
@@ -6,7 +7,17 @@ import { recordAudit } from '../../services/audit.service.js'
 import { notify } from '../notifications/rental-notifications.service.mjs'
 import { priceCoupon } from './coupon.service.mjs'
 import { depositFor, adjustmentTotal, invoiceNumber, invoicePdf } from './payment.service.mjs'
-import { publicRequest, canManageRequest } from '../rentals/rental-workflow.service.mjs'
+import {
+  publicRequest,
+  canManageRequest,
+  controlsWholeRequest,
+  SHARED_BOOKING_MESSAGE,
+} from '../rentals/rental-workflow.service.mjs'
+import { recordRentalCommissions } from './commission.service.mjs'
+import { customerRentalViews } from '../rentals/customer-rentals.service.mjs'
+
+// Customers get the same field-limited view as My rentals, never the raw booking document.
+const customerView = async (request) => (await customerRentalViews([request.toObject ? request.toObject() : request]))[0]
 
 export const validateCoupon = async (req, res) => {
   const subtotal = Number(req.body.subtotal)
@@ -25,7 +36,7 @@ export const recordPayment = async (req, res) => {
   const key = req.get('idempotency-key') || req.body.idempotencyKey || ''
   if (!/^[A-Za-z0-9_-]{12,128}$/.test(key))
     return res.status(400).json({ message: 'Send a unique Idempotency-Key for this payment.' })
-  const request = await RentalRequest.findOne({
+  let request = await RentalRequest.findOne({
     _id: req.params.requestId,
     customerId: req.user._id,
   })
@@ -33,7 +44,7 @@ export const recordPayment = async (req, res) => {
   if (request.payment?.idempotencyKey === key && request.payment.status !== 'unpaid')
     return res.json({
       message: 'This payment was already processed.',
-      request: publicRequest(request),
+      request: await customerView(request),
       idempotent: true,
     })
   if (
@@ -52,7 +63,21 @@ export const recordPayment = async (req, res) => {
     return res.status(503).json({
       message: `${provider} checkout is not connected yet. Set PAYMENT_PROVIDER=sandbox for local verification.`,
     })
-  const held = depositFor(request)
+  // The sandbox collects no money; a live site must not treat it as paid and record commission.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SANDBOX_PAYMENTS !== 'true')
+    return res.status(503).json({
+      message: 'Online payment is not available yet. The shop will contact you to arrange payment.',
+    })
+  let held = depositFor(request)
+  let idempotent = false
+  try {
+  await mongoose.connection.transaction(async (session) => {
+  request = await RentalRequest.findOne({ _id: req.params.requestId, customerId: req.user._id }).session(session)
+  if (!request || request.status !== 'confirmed' || !request.items.every((item) => item.decision === 'accepted'))
+    throw Object.assign(new Error('This booking changed. Refresh before paying.'), { status: 409 })
+  if (request.payment?.idempotencyKey === key && request.payment.status !== 'unpaid') { idempotent = true; return }
+  if (request.payment?.status !== 'unpaid') throw Object.assign(new Error('This booking has already been paid.'), { status: 409 })
+  held = depositFor(request)
   request.payment = {
     status: 'authorized',
     provider,
@@ -65,13 +90,19 @@ export const recordPayment = async (req, res) => {
     adjustments: [],
   }
   request.invoiceNumber = invoiceNumber()
+  request.commissionVersion = 1
   request.invoiceIssuedAt = new Date()
   request.statusHistory.push({
     status: request.status,
     by: req.user._id,
     note: `Sandbox payment authorized: rental LKR ${request.total}, deposit hold LKR ${held}.`,
   })
-  await request.save()
+  await request.save({ session })
+  await recordRentalCommissions(request, session)
+  })
+  } catch (error) {
+    return res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not record this payment. Please try again.' })
+  }
   recordAudit(req, {
     action: 'payment.authorized',
     entityType: 'rental_request',
@@ -79,8 +110,9 @@ export const recordPayment = async (req, res) => {
     summary: `Authorized rental payment and held deposit for booking ${request.invoiceNumber}.`,
   })
   res.json({
-    message: `Sandbox payment confirmed. LKR ${held.toLocaleString('en-LK')} deposit is held until return inspection.`,
-    request: publicRequest(request),
+    message: idempotent ? 'This payment was already processed.' : `Sandbox payment confirmed. LKR ${held.toLocaleString('en-LK')} deposit is held until return inspection.`,
+    ...(idempotent && { idempotent: true }),
+    request: await customerView(request),
   })
 }
 
@@ -88,8 +120,9 @@ export const downloadInvoice = async (req, res) => {
   const request = await RentalRequest.findById(req.params.requestId)
   if (
     !request ||
-    (String(request.customerId) !== String(req.user._id) && !canManageRequest(request, req.user))
+    (String(request.customerId) !== String(req.user._id) && !controlsWholeRequest(request, req.user))
   )
+    // The invoice lists every shop's items, so a shop sharing the booking cannot download it.
     return res.status(404).json({ message: 'Invoice not found.' })
   if (!request.invoiceNumber)
     return res.status(409).json({ message: 'An invoice is issued after payment.' })
@@ -114,6 +147,8 @@ export const recordAdjustment = async (req, res) => {
   const request = await RentalRequest.findById(req.params.requestId)
   if (!request || !canManageRequest(request, req.user))
     return res.status(404).json({ message: 'Rental booking not found.' })
+  if (!controlsWholeRequest(request, req.user))
+    return res.status(403).json({ message: SHARED_BOOKING_MESSAGE })
   if (
     !['active', 'returned', 'disputed'].includes(request.status) ||
     request.payment?.status !== 'authorized'
@@ -151,6 +186,8 @@ export const refundDeposit = async (req, res) => {
   const request = await RentalRequest.findById(req.params.requestId)
   if (!request || !canManageRequest(request, req.user))
     return res.status(404).json({ message: 'Rental booking not found.' })
+  if (!controlsWholeRequest(request, req.user))
+    return res.status(403).json({ message: SHARED_BOOKING_MESSAGE })
   if (
     !['returned', 'completed'].includes(request.status) ||
     request.payment?.status !== 'authorized'

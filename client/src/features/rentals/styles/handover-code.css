@@ -1,0 +1,10 @@
+.rental-code-input { display: flex; gap: clamp(4px, 1.4vw, 9px); width: 100%; margin: 10px 0; }
+.rental-code-input input:not([type="hidden"]) { box-sizing: border-box; min-width: 0; width: clamp(32px, 10vw, 48px); height: 52px; padding: 0; text-align: center; font-family: inherit; font-size: 23px; font-weight: 700; letter-spacing: 0; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #0f172a; transition: border-color .16s, box-shadow .16s; }
+.rental-code-input input:focus { outline: 0; border-color: #0866ff; box-shadow: 0 0 0 3px #0866ff20; }
+.rental-code-input input:disabled { opacity: .55; }
+.dispatch-private-code { display: flex; gap: 12px; padding: 16px; margin: 16px 0; color: #154e91; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; }
+.dispatch-private-code p { margin: 6px 0 0; line-height: 1.6; }
+.dispatch-job-contacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.dispatch-job-contacts small { display: block; }
+.dispatch-verification-records small { grid-column: 1 / -1; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .rental-code-input input { transition: none; } }

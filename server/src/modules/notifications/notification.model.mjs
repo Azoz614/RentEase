@@ -5,6 +5,8 @@ const notificationSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'RentalRequest' },
     deliveryTaskId: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryTask' },
+    handoverChallengeId: { type: String, select: false },
+    expiresAt: Date,
     title: { type: String, required: true },
     body: { type: String, required: true },
     readAt: { type: Date, default: null },
@@ -25,4 +27,5 @@ notificationSchema.index(
     partialFilterExpression: { deliveryTaskId: { $exists: true } },
   },
 )
+notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 export const Notification = mongoose.model('Notification', notificationSchema)

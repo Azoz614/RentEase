@@ -8,11 +8,18 @@ import { UiIcon } from '../../../components/ui/UiIcon.jsx'
 import { WorkspaceNav } from '../../../components/ui/WorkspaceNav.jsx'
 import { DeliveryWorkspace } from '../../maps/components/DeliveryWorkspace.jsx'
 import { stages as deliveryStages } from '../../maps/utils/deliveryStages.js'
+import NotificationBell from '../../notifications/components/NotificationBell.jsx'
+import NotificationCenter from '../../notifications/pages/NotificationCenter.jsx'
+import CommissionPanel from '../../payments/components/CommissionPanel.jsx'
+import { useNotificationCount } from '../../notifications/hooks/useNotificationCount.js'
+import WorkspaceAccountMenu from '../../../components/account/WorkspaceAccountMenu.jsx'
+import WorkspaceFooter from '../../../components/layout/WorkspaceFooter.jsx'
 
 const stages = deliveryStages.map((key) => [key, key.replaceAll('_', ' ')])
 const nextStage = (status = 'assigned') => stages[stages.findIndex(([key]) => key === status) + 1]
 
-export default function DeliveryHome({ user, api, onLogout }) {
+export default function DeliveryHome({ user, api, onLogout, onAccountUpdate }) {
+  const unread = useNotificationCount(api)
   const [dispatchStats, setDispatchStats] = useState({
     active: 0,
     completed: 0,
@@ -21,16 +28,14 @@ export default function DeliveryHome({ user, api, onLogout }) {
   })
   const [section, setSection] = useState('deliveries')
   const [requests, setRequests] = useState([])
-  const [notifications, setNotifications] = useState([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const [jobs, inbox] = await Promise.all([api('/api/delivery/assignments'), api('/api/inbox')])
+      const jobs = await api('/api/delivery/assignments')
       setRequests(jobs.requests || [])
-      setNotifications(inbox.notifications || [])
       setError('')
     } catch (loadError) {
       setError(loadError.message)
@@ -92,10 +97,11 @@ export default function DeliveryHome({ user, api, onLogout }) {
           active={section}
           items={[
             { id: 'deliveries', label: 'My deliveries', badge: activeCount },
+            { id: 'earnings', label: 'Earnings' },
             {
               id: 'inbox',
               label: 'Updates',
-              badge: notifications.filter((item) => !item.readAt).length,
+              badge: unread,
             },
           ]}
           onSelect={setSection}
@@ -114,14 +120,14 @@ export default function DeliveryHome({ user, api, onLogout }) {
       <section className="business-main">
         <header className="business-topbar">
           <div>
-            <small>DELIVERY PARTNER / {section.toUpperCase()}</small>
-            <h1>{section === 'deliveries' ? 'Your delivery route' : 'Mailbox updates'}</h1>
+            <h1>{{ deliveries: 'My deliveries', inbox: 'Notifications', earnings: 'Earnings' }[section] || 'My deliveries'}</h1>
           </div>
           <div className="business-top-actions">
+            <NotificationBell api={api} unreadCount={unread} onHistory={() => setSection('inbox')} onNavigate={() => setSection('deliveries')} />
             <button onClick={load} aria-label="Refresh assignments">
               <UiIcon name="refresh" size={17} />
             </button>
-            <span className="business-avatar-small">{(user.username || 'D')[0].toUpperCase()}</span>
+            <WorkspaceAccountMenu user={user} api={api} onLogout={onLogout} onAccountUpdate={onAccountUpdate} />
           </div>
         </header>
         {error && (
@@ -134,23 +140,8 @@ export default function DeliveryHome({ user, api, onLogout }) {
             {notice}
           </div>
         )}
-        {section === 'deliveries' && (
-          <>
-            <div className="driver-welcome">
-              <div>
-                <span className="workspace-kicker">DELIVERY OPERATIONS</span>
-                <h2>Good day, {user.username}.</h2>
-                <p>Your assignments, pickups and returns in one place.</p>
-              </div>
-              <span className="driver-map-mark">
-                <UiIcon name="map" size={40} />
-                <small>
-                  YOUR ACTIVE
-                  <br />
-                  DELIVERIES
-                </small>
-              </span>
-            </div>
+        {/* Stays mounted while hidden: unmounting the board would take the rider offline. */}
+        <div hidden={section !== 'deliveries'}>
             <div className="business-stat-grid driver-stat-grid">
               <article>
                 <span className="business-stat-icon blue">
@@ -164,7 +155,7 @@ export default function DeliveryHome({ user, api, onLogout }) {
                 <span className="business-stat-icon green">
                   <UiIcon name="check" />
                 </span>
-                <small>Completed returns</small>
+                <small>Completed trips</small>
                 <b>
                   {activeItems.filter(({ item }) => item.deliveryStatus === 'returned').length +
                     dispatchStats.completed}
@@ -175,7 +166,7 @@ export default function DeliveryHome({ user, api, onLogout }) {
                 <span className="business-stat-icon amber">
                   <UiIcon name="wallet" />
                 </span>
-                <small>Delivery fee value</small>
+                <small>Trip fees</small>
                 <b>
                   {currency(
                     requests.reduce((sum, request) => sum + Number(request.deliveryFee || 0), 0) +
@@ -186,7 +177,10 @@ export default function DeliveryHome({ user, api, onLogout }) {
               </article>
             </div>
             <DeliveryTaskBoard api={api} role="delivery_partner" onSummary={setDispatchStats} />
-            <DeliveryWorkspace api={api} role="delivery_partner" />
+            <details className="driver-tracking-details">
+              <summary><UiIcon name="map" size={20} /><span>Route map<small>Driving directions and live location</small></span><UiIcon name="chevron" size={18} /></summary>
+              <DeliveryWorkspace api={api} role="delivery_partner" />
+            </details>
             {!!requests.length && (<section className="workspace-card driver-jobs">
               <div className="workspace-card-head">
                 <div>
@@ -290,38 +284,13 @@ export default function DeliveryHome({ user, api, onLogout }) {
                 </div>
               )}
             </section>)}
-          </>
-        )}
+        </div>
         {section === 'inbox' && (
-          <section className="workspace-card">
-            <div className="workspace-card-head">
-              <div>
-                <small className="workspace-kicker">IN-APP NOTIFICATIONS</small>
-                <h2>Recent updates</h2>
-                <p>Booking and delivery status changes for your account.</p>
-              </div>
-            </div>
-            {notifications.length ? (
-              notifications.map((item) => (
-                <article className="driver-notification" key={item._id}>
-                  <span>
-                    <UiIcon name="mail" size={20} />
-                  </span>
-                  <div>
-                    <b>{item.title}</b>
-                    <p>{item.body}</p>
-                    <small>{new Date(item.createdAt).toLocaleString()}</small>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="workspace-empty">
-                No updates yet. Assignment notifications will appear here.
-              </div>
-            )}
-          </section>
+          <NotificationCenter api={api} onNavigate={() => setSection('deliveries')} />
         )}
+        {section === 'earnings' && <CommissionPanel api={api} role="delivery_partner" />}
       </section>
+      <WorkspaceFooter />
     </main>
   )
 }

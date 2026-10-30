@@ -1,8 +1,11 @@
 import { roleLabels } from '../utils/adminPresentation.js'
 import { Empty } from './Empty.jsx'
 
+const roleNames = { user: 'a customer', delivery_partner: 'a delivery partner', rental_shop: 'a rental shop' }
+
 export default function UsersPanel({
   busy,
+  deleteUser,
   exportCsv,
   setUserRole,
   setUserSearch,
@@ -16,6 +19,7 @@ export default function UsersPanel({
   users,
   visibleUsers,
 }) {
+  // Each change is confirmed in the admin password dialog, which shows the summary passed here.
   return (
     <div className="admin-work-grid">
       <section className="admin-card">
@@ -86,7 +90,7 @@ export default function UsersPanel({
                     item.email,
                     item.phone,
                     roleLabels[item.role] || item.role,
-                    item.active ? 'Active' : 'Suspended',
+                    item.active ? 'Active' : 'On hold',
                   ]),
                 ])
               }
@@ -123,7 +127,7 @@ export default function UsersPanel({
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
-            <option value="inactive">Suspended</option>
+            <option value="inactive">On hold</option>
           </select>
         </div>
         <div className="admin-table-wrap">
@@ -147,8 +151,14 @@ export default function UsersPanel({
                     <select
                       aria-label={`Role for ${account.username}`}
                       value={account.role === 'admin' ? 'admin' : account.role}
-                      disabled={account.role === 'admin' || account._id === user.id}
-                      onChange={(event) => updateUser(account._id, { role: event.target.value })}
+                      disabled={busy || account.role === 'admin' || account._id === user.id}
+                      onChange={(event) =>
+                        updateUser(
+                          account._id,
+                          { role: event.target.value },
+                          `Change ${account.username} to ${roleNames[event.target.value]}?`,
+                        )
+                      }
                     >
                       <option value="user">Customer</option>
                       <option value="delivery_partner">Delivery partner</option>
@@ -158,21 +168,39 @@ export default function UsersPanel({
                   </td>
                   <td>
                     <span className={`admin-status ${account.active ? 'is-active' : 'is-paused'}`}>
-                      {account.active ? 'Active' : 'Suspended'}
+                      {account.active ? 'Active' : 'On hold'}
                     </span>
                   </td>
                   <td>
                     {account.role === 'admin' ? (
                       <small>Protected</small>
                     ) : (
-                      <button
-                        className="admin-row-action"
-                        type="button"
-                        disabled={busy || account._id === user.id}
-                        onClick={() => updateUser(account._id, { active: !account.active })}
-                      >
-                        {account.active ? 'Suspend' : 'Restore'}
-                      </button>
+                      <div className="admin-row-actions">
+                        <button
+                          className="admin-row-action"
+                          type="button"
+                          disabled={busy || account._id === user.id}
+                          onClick={() =>
+                            updateUser(
+                              account._id,
+                              { active: !account.active },
+                              account.active
+                                ? `Put ${account.username} on hold? They are signed out and their listings hidden.`
+                                : `Release ${account.username} from hold?`,
+                            )
+                          }
+                        >
+                          {account.active ? 'Hold' : 'Release'}
+                        </button>
+                        <button
+                          className="admin-row-action danger"
+                          type="button"
+                          disabled={busy || account._id === user.id}
+                          onClick={() => deleteUser(account)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

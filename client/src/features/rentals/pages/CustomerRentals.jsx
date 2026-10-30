@@ -5,11 +5,17 @@ import { shortId, filters, isUpcoming, isPast } from '../utils/customerRentalPre
 import { Symbol } from '../components/Symbol.jsx'
 import { RentalCard } from '../components/RentalCard.jsx'
 import { ActionDialog } from '../components/ActionDialog.jsx'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import '../styles/customer-rentals.css'
+import '../styles/my-rentals-modern.css'
 import CustomerRentalDetails from '../components/CustomerRentalDetails.jsx'
-import CustomerPickupModal from '../components/CustomerPickup.jsx'
 import { customerRentalStatus, preferLatestRental } from '../utils/customerRental.js'
+
+const rentalGroup = (rental) => ['active', 'return_in_transit'].includes(rental.status) ? 'In progress'
+  : ['pending', 'confirmed'].includes(rental.status) ? 'Upcoming rentals'
+  : ['returned', 'completed'].includes(rental.status) ? 'Completed rentals'
+  : rental.status === 'cancelled' ? 'Cancelled rentals' : 'Needs attention'
+const groupOrder = ['In progress', 'Upcoming rentals', 'Needs attention', 'Completed rentals', 'Cancelled rentals']
 
 export default function CustomerRentals({
   initialRentals = [],
@@ -20,16 +26,30 @@ export default function CustomerRentals({
   onRentalsChange,
   onBrowse,
   onMessages,
+  onChat,
+  focusRentalId,
+  onFocusConsumed,
 }) {
   const [rentals, setRentals] = useState(initialRentals)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedRental, setSelectedRental] = useState(null)
-  const [pickupRental, setPickupRental] = useState(null)
   const [returnRental, setReturnRental] = useState(null)
   const detailsTrigger = useRef(null)
   const refreshButton = useRef(null)
+  const section = useRef(null)
+  // The toolbar sticks just below the site navigation, whose height changes when it wraps.
+  useLayoutEffect(() => {
+    const nav = document.querySelector('.market-nav')
+    if (!nav || !section.current) return
+    const update = () => section.current?.style.setProperty('--cr-sticky-top', `${nav.offsetHeight}px`)
+    update()
+    if (!window.ResizeObserver) return
+    const observer = new window.ResizeObserver(update)
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [])
   const [loading, setLoading] = useState(initialRentals.length === 0)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
@@ -42,6 +62,11 @@ export default function CustomerRentals({
   const refreshInFlight = useRef(false)
   const loadSequence = useRef(0)
   const mounted = useRef(false)
+  useEffect(() => {
+    if (!focusRentalId) return
+    const rental = rentals.find((entry) => entry._id === focusRentalId)
+    if (rental) queueMicrotask(() => { setSelectedRental(rental); onFocusConsumed?.() })
+  }, [focusRentalId, rentals, onFocusConsumed])
   useLayoutEffect(() => {
     if (selectedRental || !detailsTrigger.current) return
     if (detailsTrigger.current.isConnected) detailsTrigger.current.focus()
@@ -119,6 +144,8 @@ export default function CustomerRentals({
     active: rentals.filter((rental) => ['active', 'return_in_transit'].includes(rental.status))
       .length,
     past: rentals.filter(isPast).length,
+    completed: rentals.filter((rental) => ['returned', 'completed'].includes(rental.status)).length,
+    cancelled: rentals.filter((rental) => rental.status === 'cancelled').length,
   }
   const updateRental = useCallback(
     (updated) =>
@@ -164,7 +191,9 @@ export default function CustomerRentals({
           filter === 'all' ||
           (filter === 'upcoming' && isUpcoming(rental)) ||
           (filter === 'active' && ['active', 'return_in_transit'].includes(rental.status)) ||
-          (filter === 'past' && isPast(rental))
+          (filter === 'past' && isPast(rental)) ||
+          (filter === 'completed' && ['returned', 'completed'].includes(rental.status)) ||
+          (filter === 'cancelled' && rental.status === 'cancelled')
         const inStatus =
           statusFilter === 'all' ||
           statusFilter === rental.status ||
@@ -176,7 +205,7 @@ export default function CustomerRentals({
             .toLowerCase()
             .includes(search.trim().toLowerCase())
         )
-      }),
+      }).sort((a, b) => groupOrder.indexOf(rentalGroup(a)) - groupOrder.indexOf(rentalGroup(b)) || new Date(b.createdAt) - new Date(a.createdAt)),
     [rentals, filter, search, statusFilter],
   )
 
@@ -260,55 +289,10 @@ export default function CustomerRentals({
 
   useDeliveryRefresh(load)
   return (
-    <section className="customer-rentals" aria-labelledby="customer-rentals-heading">
-      <div className="cr-breadcrumb">
-        <button onClick={onBrowse}>Explore rentals</button>
-        <span>/</span>
-        <span>My rentals</span>
-      </div>
-      <header className="cr-heading">
-        <div>
-          <span className="cr-eyebrow">YOUR RENTAL SPACE</span>
-          <h1 id="customer-rentals-heading">My rentals.</h1>
-          <p>From your first pickup to the final return, we’ll keep you in the loop.</p>
-        </div>
-        <button
-          ref={refreshButton}
-          className="cr-button cr-secondary"
-          onClick={() => {
-            setRefreshing(true)
-            load()
-          }}
-          disabled={refreshing || loading}
-        >
-          <Symbol name="refresh" />
-          {refreshing ? 'Refreshing…' : 'Refresh bookings'}
-        </button>
-      </header>
-      <div className="cr-overview" aria-label="Your rental summary">
-        {[
-          [counts.upcoming, 'Upcoming rentals', 'calendar'],
-          [counts.active, 'Out on rental', 'box'],
-          [counts.past, 'Past rentals', 'check'],
-        ].map(([count, label, icon]) => (
-          <div key={label}>
-            <span className="cr-overview-icon">
-              <Symbol name={icon} />
-            </span>
-            <span>
-              <strong>{count}</strong>
-              <small>{label}</small>
-            </span>
-          </div>
-        ))}
-        <p>
-          <Symbol name="shield" />
-          <span>
-            <b>Safer handovers</b>Pickup and return are verified by email.
-          </span>
-        </p>
-      </div>
-      <div className="cr-list-toolbar">
+    <section ref={section} className="customer-rentals cr-modern" aria-labelledby="customer-rentals-heading">
+      <h1 id="customer-rentals-heading" className="cr-screen-reader">My rentals</h1>
+      {/* One full-width row pinned under the site navigation; tab counts double as the summary. */}
+      <div className="cr-list-toolbar cr-sticky-toolbar">
         <nav className="cr-filters" aria-label="Filter your rentals">
           {filters.map(([key, label]) => (
             <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
@@ -318,7 +302,7 @@ export default function CustomerRentals({
           ))}
         </nav>
         <label className="cr-search">
-          <Symbol name="search" size={18} />
+          <Symbol name="search" size={16} />
           <input
             type="search"
             aria-label="Search your rentals"
@@ -346,6 +330,18 @@ export default function CustomerRentals({
             <option value="disputed">Disputed</option>
           </select>
         </label>
+        <button
+          ref={refreshButton}
+          className="cr-button cr-secondary cr-refresh"
+          onClick={() => {
+            setRefreshing(true)
+            load()
+          }}
+          disabled={refreshing || loading}
+        >
+          <Symbol name="refresh" size={16} />
+          {refreshing ? 'Refreshing…' : 'Refresh bookings'}
+        </button>
       </div>
       {notice && (
         <div className="cr-notice" role="status">
@@ -388,7 +384,10 @@ export default function CustomerRentals({
             </p>
           </>
         ) : (
-          visible.map((rental) => (
+          visible.map((rental, index) => (
+            <Fragment key={rental._id}>
+            {filter === 'all' && (index === 0 || rentalGroup(visible[index - 1]) !== rentalGroup(rental)) &&
+              <h2 className="cr-group-label">{rentalGroup(rental)}<span>{visible.filter((entry) => rentalGroup(entry) === rentalGroup(rental)).length}</span></h2>}
             <RentalCard
               key={rental._id}
               rental={rental}
@@ -398,11 +397,12 @@ export default function CustomerRentals({
               onAction={openAction}
               onInvoice={downloadInvoice}
               onMessages={onMessages}
+              onChat={onChat}
               onViewDetails={viewDetails}
-              onPickup={setPickupRental}
               onReturn={requestReturnCode}
               onAssign={assignPartner}
             />
+            </Fragment>
           ))
         )}
         {!loading && !visible.length && !error && (
@@ -436,23 +436,6 @@ export default function CustomerRentals({
           </div>
         )}
       </div>
-      <aside className="cr-email-guide">
-        <span className="cr-guide-icon">
-          <Symbol name="mail" size={24} />
-        </span>
-        <div>
-          <h2>A little code. Extra peace of mind.</h2>
-          <p>
-            Every handover has its own email code. For self return, the shop receives the code and
-            you verify it here. With rider collection, your rider and the shop verify each transfer.
-            Codes expire after 5 minutes.
-          </p>
-        </div>
-        <span className="cr-guide-tag">
-          <Symbol name="shield" size={15} />
-          Verified with you
-        </span>
-      </aside>
       {selectedRental && (
         <CustomerRentalDetails
           key={selectedRental._id}
@@ -463,24 +446,12 @@ export default function CustomerRentals({
           onAction={openAction}
           onInvoice={downloadInvoice}
           busy={busy}
-          onPickup={setPickupRental}
           onReturn={requestReturnCode}
         />
       )}
       {returnRental && (
         <ReturnMethodDialog rental={rentals.find((r) => r._id === returnRental._id) || returnRental}
           api={api} onClose={() => setReturnRental(null)} onUpdated={async (message) => { setNotice(message); await load() }} />
-      )}
-      {pickupRental && (
-        <CustomerPickupModal
-          rental={rentals.find((entry) => entry._id === pickupRental._id) || pickupRental}
-          api={api}
-          onClose={() => setPickupRental(null)}
-          onRequested={(message) => {
-            setNotice(message)
-            load()
-          }}
-        />
       )}
       {action && (
         <ActionDialog

@@ -1,8 +1,9 @@
+import { useState } from 'react'
+import ProductPhotoManager from '../../products/components/ProductPhotoManager.jsx'
 import { UiIcon } from '../../../components/ui/UiIcon.jsx'
 
 export default function CreateProductDialog({
   busy,
-  handlePhotos,
   newItemType,
   photos,
   setAddItemOpen,
@@ -11,6 +12,7 @@ export default function CreateProductDialog({
   submitProduct,
   users,
 }) {
+  const [readingPhotos, setReadingPhotos] = useState(false)
   return (
     <div
       className="admin-modal-backdrop"
@@ -199,35 +201,8 @@ export default function CreateProductDialog({
                   ))}
               </select>
             </label>
-            <label className="admin-upload-label">
-              Item photos <small>Choose 1 to 6 JPEG, PNG, or WebP files, up to 2.5 MB each</small>
-              <input
-                className="admin-file-input"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={handlePhotos}
-              />
-            </label>
-            {!!photos.length && (
-              <div className="admin-photo-previews">
-                {photos.map((photo, index) => (
-                  <div key={`${photo.name}-${index}`}>
-                    <img src={photo.data} alt={photo.name} />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPhotos((items) => items.filter((_, photoIndex) => photoIndex !== index))
-                      }
-                      aria-label={`Remove ${photo.name}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button className="admin-primary" type="submit" disabled={busy || !photos.length}>
+            <ProductPhotoManager photos={photos} setPhotos={setPhotos} disabled={busy} onReadingChange={setReadingPhotos} />
+            <button className="admin-primary" type="submit" disabled={busy || readingPhotos || !photos.length}>
               {busy ? 'Publishing...' : 'Publish item'}
             </button>
           </form>

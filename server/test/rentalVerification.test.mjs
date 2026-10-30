@@ -4,10 +4,12 @@ import { randomBytes } from 'node:crypto'
 import express from 'express'
 import request from 'supertest'
 import mongoose from 'mongoose'
+import bcrypt from 'bcryptjs'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import { User } from '../src/modules/users/user.model.mjs'
 import { Product } from '../src/modules/products/product.model.mjs'
 import { RentalRequest } from '../src/modules/rentals/rental.model.mjs'
+import { Notification } from '../src/modules/notifications/notification.model.mjs'
 import { AuditLog } from '../src/modules/admin/audit-log.model.mjs'
 import { VerificationRate } from '../src/modules/otp/verification-rate.model.mjs'
 import { IdentityVerification } from '../src/modules/identity/identity.model.mjs'
@@ -16,7 +18,6 @@ import { createRentalVerificationRouter } from '../src/modules/rentals/handover.
 import { createCustomerPickupRouter } from '../src/modules/rentals/customer-handover.routes.js'
 import rentalRoutes from '../src/routes/marketplace.routes.js'
 import productionApp from '../src/app.js'
-import { sendHandoverOtp } from '../src/config/mailer.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
@@ -24,13 +25,20 @@ import { fileURLToPath } from 'node:url'
 let mongo, app, admin, customer, rental, product, headers
 let emails = [], failEmail = false
 const base = (id = rental._id, type = 'pickup') => `/api/admin/rentals/${id}/verification/${type}`
-const send = (id, type) => request(app).post(`${base(id, type)}/send`).set(headers).send({})
-const verify = (challenge, code = emails.at(-1).code, type = 'pickup', id = rental._id) => request(app).post(`${base(id, type)}/verify`).set(headers).send({ challengeId: challenge.challengeId, code })
+const send = async (id, type) => {
+  if (type !== 'return') return request(app).post(`${base(id, type)}/send`).set(headers).send({})
+  const result = await request(app).post(`/api/requests/${id || rental._id}/return/send`).set(customerHeaders()).send({})
+  if (result.status === 200) result.body.challengeId = result.body.handovers[0].challengeId
+  return result
+}
+const verify = (challenge, code = emails.at(-1).code, type = 'pickup', id = rental._id) => type === 'return'
+  ? request(app).post(`/api/requests/${id}/return/verify`).set(customerHeaders()).send({ challengeId: challenge.challengeId, code })
+  : request(app).post(`${base(id, type)}/verify`).set(headers).send({ challengeId: challenge.challengeId, code })
 const wrongCode = (value) => `${value[0] === '9' ? '0' : '9'}${value.slice(1)}`
 const customerHeaders = () => ({ Authorization: `Bearer ${createSession(customer._id)}` })
 const pickupPath = (id = rental._id) => `/api/requests/${id}/pickup`
-const customerSend = () => request(app).post(`${pickupPath()}/send`).set(customerHeaders()).send({})
-const customerVerify = (challenge, code = emails.at(-1).code) => request(app).post(`${pickupPath()}/verify`).set(customerHeaders()).send({ challengeId: challenge.challengeId, code })
+const customerSend = () => send()
+const customerVerify = (challenge, code) => verify(challenge, code)
 const confirmHandover = () => request(app).post(`/api/admin/rentals/${rental._id}/handover/confirm`).set(headers).send({})
 const cancel = (body = {}) => request(app).post(`/api/requests/${rental._id}/cancel`).set(customerHeaders()).send(body)
 const allowCancellation = () => RentalRequest.updateOne({ _id: rental._id }, { $set: { startDate: new Date(Date.now() + 72 * 3600000), endDate: new Date(Date.now() + 96 * 3600000) } })
@@ -40,7 +48,7 @@ before(async () => {
   process.env.SESSION_SECRET = randomBytes(32).toString('hex')
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } })
   await mongoose.connect(mongo.getUri('rentease_verification_tests'))
-  await Promise.all([User.init(), Product.init(), RentalRequest.init(), AuditLog.init(), VerificationRate.init(), IdentityVerification.init()])
+  await Promise.all([User.init(), Product.init(), RentalRequest.init(), AuditLog.init(), Notification.init(), VerificationRate.init(), IdentityVerification.init()])
   app = express()
   app.use(express.json())
   app.use('/api/admin', createRentalVerificationRouter({ sendEmail: async (email, code, type, rentalId) => {
@@ -58,7 +66,7 @@ after(async () => { await mongoose.disconnect(); if (mongo) await mongo.stop() }
 
 beforeEach(async () => {
   mock.restoreAll()
-  await Promise.all([User.deleteMany({}), Product.deleteMany({}), RentalRequest.deleteMany({}), AuditLog.deleteMany({}), VerificationRate.deleteMany({}), IdentityVerification.deleteMany({})])
+  await Promise.all([User.deleteMany({}), Product.deleteMany({}), RentalRequest.deleteMany({}), AuditLog.deleteMany({}), Notification.deleteMany({}), VerificationRate.deleteMany({}), IdentityVerification.deleteMany({})])
   emails = []; failEmail = false
   admin = await User.create({ username: 'Operations Admin', email: 'admin@example.test', phone: '0701234567', password: 'test-password-only', role: 'admin' })
   customer = await User.create({ username: 'Test Customer', email: 'customer@example.test', phone: '0701234568', password: 'test-password-only' })
@@ -97,7 +105,9 @@ test('actual booking, approval, sandbox payment, customer pickup and cancellatio
   const created = await book(72)
   assert.equal(created.status, 201, JSON.stringify(created.body))
   rental = await RentalRequest.findById(created.body.request._id)
-  const approved = await request(app).patch(`/api/provider/requests/${rental._id}/items/${product._id}`).set(headers).send({ decision: 'accepted' })
+  // Approving checks the admin's real account password, so store it hashed like a live account.
+  await User.updateOne({ _id: admin._id }, { password: await bcrypt.hash('test-password-only', 4) })
+  const approved = await request(app).patch(`/api/provider/requests/${rental._id}/items/${product._id}`).set(headers).send({ decision: 'accepted', password: 'test-password-only' })
   assert.equal(approved.status, 200, JSON.stringify(approved.body))
   const paid = await request(app).post(`/api/requests/${rental._id}/payments`).set(customerHeaders()).set('Idempotency-Key', 'test-booking-integration-0001').send({})
   assert.equal(paid.status, 200, JSON.stringify(paid.body))
@@ -107,14 +117,14 @@ test('actual booking, approval, sandbox payment, customer pickup and cancellatio
   const sent = await customerSend()
   assert.equal(sent.status, 200)
   assert.equal(emails.at(-1).email, customer.email)
-  assert.equal((await customerVerify(sent.body)).body.rental.status, 'confirmed')
-  assert.equal((await confirmHandover()).body.rental.status, 'active')
+  assert.equal((await customerVerify(sent.body)).body.rental.status, 'active')
+  assert.equal((await confirmHandover()).status, 409)
   const active = await request(app).get(`/api/requests/${rental._id}`).set(customerHeaders())
   assert.equal(active.body.rental.status, 'active')
   assert.equal((await book(144)).status, 409)
   const returnCode = await send(rental._id, 'return')
   assert.equal((await verify(returnCode.body, emails.at(-1).code, 'return')).status, 200)
-  assert.equal((await request(app).post(`/api/admin/rentals/${rental._id}/return/confirm`).set(headers).send({ inspectionNote: 'All items received and inspected in good condition.' })).status, 200)
+  assert.equal((await request(app).post(`/api/admin/rentals/${rental._id}/return/confirm`).set(headers).send({ inspectionNote: 'All items received and inspected in good condition.' })).status, 409)
   const secondBooking = await book(144)
   assert.equal(secondBooking.status, 201)
   rental = await RentalRequest.findById(secondBooking.body.request._id)
@@ -132,54 +142,32 @@ test('staff cancellation also removes pending codes and blocks later customer ve
   assert.equal((await RentalRequest.findById(rental._id).select('+handover.pickup')).handover?.pickup, undefined)
 })
 
-test('customer verifies an email without collecting items; only admin confirmation starts rental', async () => {
-  const sent = await customerSend()
-  assert.equal(sent.status, 200, JSON.stringify(sent.body))
-  const listing = await request(app).get('/api/requests').set(customerHeaders())
-  assert.equal(listing.body.requests[0].pickupVerification.status, 'pending')
-  const adminListing = await request(app).get('/api/admin/rentals').set(headers)
-  assert.equal(adminListing.body.rentals[0].pickupVerification.status, 'pending')
-  assert.equal((await confirmHandover()).status, 409)
-  const verified = await customerVerify(sent.body)
-  assert.equal(verified.status, 200, JSON.stringify(verified.body))
-  assert.equal(verified.body.rental.status, 'confirmed')
-  assert.equal(verified.body.rental.pickupVerification.status, 'customer_verified')
-  assert.equal(verified.body.rental.pickupVerifiedAt, null)
-  assert.equal((await customerVerify(sent.body)).status, 409)
-  assert.equal((await customerSend()).status, 409)
-  const progress = await request(app).get(`/api/admin/rentals/${rental._id}`).set(headers)
-  assert.equal(progress.body.rental.pickupVerification.status, 'customer_verified')
-  assert.equal(JSON.stringify(progress.body).includes('otpHash'), false)
-  const confirmed = await confirmHandover()
-  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body))
-  assert.equal(confirmed.body.rental.status, 'active')
-  assert.equal((await confirmHandover()).status, 409)
+test('the shop sends and verifies pickup; preparation never introduces a second confirmation', async () => {
+  await RentalRequest.updateOne({ _id: rental._id }, { $set: { requiresPickupPreparation: true, readyForPickupAt: new Date() } })
+  assert.equal((await request(app).post(`${pickupPath()}/send`).set(customerHeaders()).send({})).status, 403)
+  const sent = await send()
+  assert.equal(sent.status, 200)
+  const privateNotice = await Notification.findOne({ userId: customer._id, type: 'handover_otp' })
+  assert.ok(privateNotice.body.includes(emails.at(-1).code))
+  assert.equal(await Notification.countDocuments({ userId: admin._id, type: 'handover_otp' }), 0)
+  assert.equal((await verify(sent.body)).status, 200)
   const stored = await RentalRequest.findById(rental._id).select('+handover.pickup')
-  assert.ok(stored.pickupCustomerVerifiedAt)
-  assert.ok(stored.pickupVerifiedAt)
-  assert.equal(String(stored.pickupVerifiedBy), String(admin._id))
-  assert.equal(stored.handover.pickup.otpHash, undefined)
-  assert.deepEqual(stored.statusHistory.map((event) => event.action), ['pickup.customer_verified', 'pickup.handover_confirmed'])
-  const returned = await send(rental._id, 'return')
-  assert.equal((await verify(returned.body, emails.at(-1).code, 'return')).status, 200)
-  const details = await request(app).get(`/api/requests/${rental._id}`).set(customerHeaders())
-  assert.equal(details.body.rental.status, 'returned')
+  assert.equal(stored.status, 'active')
+  assert.equal(String(stored.handover.pickup.initiatedBy), String(admin._id))
+  assert.equal(String(stored.handover.pickup.recipientId), String(customer._id))
+  assert.equal(String(stored.handover.pickup.verifiedBy), String(admin._id))
+  assert.equal(await Notification.countDocuments({ type: 'handover_otp' }), 0)
+  assert.equal((await confirmHandover()).status, 409)
 })
 
-test('customer pickup ownership, authentication, versioned routes and admin authorization are enforced', async () => {
-  const other = await User.create({ username: 'Other customer', email: 'other@test.example', password: 'test-password-only', phone: '0701111111' })
-  for (const suffix of ['', '/send', '/verify']) {
-    const method = suffix ? 'post' : 'get'
-    assert.equal((await request(app)[method](`${pickupPath()}${suffix}`).send({})).status, 401)
-    assert.equal((await request(app)[method](`${pickupPath()}${suffix}`).set('Authorization', `Bearer ${createSession(other._id)}`).send({ code: '123456', challengeId: '00000000-0000-4000-8000-000000000000' })).status, 404)
+test('customer pickup initiation is forbidden in both API versions; only the originating shop account verifies', async () => {
+  for (const root of ['/api', '/api/v1']) {
+    assert.equal((await request(app).post(`${root}/requests/${rental._id}/pickup/send`).set(customerHeaders()).send({})).status, 403)
   }
-  assert.equal((await request(app).post(`/api/admin/rentals/${rental._id}/handover/confirm`).set(customerHeaders()).send({})).status, 403)
-  const sent = await request(app).post(`/api/v1/requests/${rental._id}/pickup/send`).set(customerHeaders()).send({})
-  assert.equal(sent.status, 200)
-  const resume = await request(app).get(pickupPath()).set(customerHeaders())
-  assert.equal(resume.body.challengeId, sent.body.challengeId)
-  assert.ok(resume.body.maskedEmail)
-  assert.equal(JSON.stringify(resume.body).includes(emails.at(-1).code), false)
+  const sent = await send()
+  const otherAdmin = await User.create({ username: 'Other admin', email: 'other-admin@example.test', phone: '0701111111', password: 'test-password-only', role: 'admin' })
+  assert.equal((await request(app).post(`${base()}/verify`).set('Authorization', `Bearer ${createSession(otherAdmin._id)}`).send({ challengeId: sent.body.challengeId, code: emails.at(-1).code })).status, 403)
+  assert.equal((await verify(sent.body)).status, 200)
 })
 
 test('customer OTP uses five attempts, expiry, shared cooldown and registered email binding', async () => {
@@ -188,7 +176,7 @@ test('customer OTP uses five attempts, expiry, shared cooldown and registered em
   const bad = wrongCode(emails.at(-1).code)
   await Promise.all(Array.from({ length: 7 }, () => customerVerify(sent.body, bad)))
   assert.equal((await customerVerify(sent.body)).status, 429)
-  const resume = await request(app).get(pickupPath()).set(customerHeaders())
+  const resume = await request(app).get(base()).set(headers)
   assert.equal(resume.body.attemptsRemaining, 0)
   await RentalRequest.updateOne({ _id: rental._id }, { $set: { 'handover.pickup.sentAt': new Date(Date.now() - 61000) } })
   const resent = await customerSend()
@@ -244,40 +232,35 @@ test('cancellation respects cutoff and rejects foreign, active and malformed req
   assert.equal((await cancel()).status, 409)
 })
 
-test('concurrent cancellation and confirmed handover allow exactly one terminal outcome', async () => {
+test('concurrent cancellation and pickup verification allow exactly one terminal outcome', async () => {
   await allowCancellation()
-  const sent = await customerSend(); await customerVerify(sent.body)
-  const responses = await Promise.all([cancel(), confirmHandover(), confirmHandover(), cancel()])
-  assert.equal(responses.filter((response) => response.status === 200).length, 1)
-  assert.ok(responses.every((response) => [200, 409].includes(response.status)))
+  const sent = await send()
+  const responses = await Promise.all([cancel(), verify(sent.body), verify(sent.body), cancel()])
+  assert.equal(responses.filter((r) => r.status === 200).length, 1)
+  assert.ok(responses.every((r) => [200, 409].includes(r.status)))
   const stored = await RentalRequest.findById(rental._id)
   assert.ok(['active', 'cancelled'].includes(stored.status))
-  assert.equal(await AuditLog.countDocuments({ action: { $in: ['booking.cancelled', 'rental.pickup.handover_confirmed'] } }), 1)
   assert.equal((await Product.findById(product._id)).rentalSlots.length, stored.status === 'active' ? 1 : 0)
 })
 
-test('concurrent cancellation and OTP verification never resurrect a cancelled booking', async () => {
+test('cancellation invalidates pickup codes and removes private OTP notifications', async () => {
   await allowCancellation()
-  const sent = await customerSend()
-  const responses = await Promise.all([customerVerify(sent.body), cancel()])
-  assert.equal(responses[1].status, 200, JSON.stringify(responses[1].body))
-  assert.ok([200, 409].includes(responses[0].status))
-  const stored = await RentalRequest.findById(rental._id).select('+handover.pickup')
-  assert.equal(stored.status, 'cancelled')
-  assert.equal(stored.handover?.pickup, undefined)
-  assert.equal((await confirmHandover()).status, 409)
+  const sent = await send()
+  assert.equal((await cancel()).status, 200)
+  assert.equal((await verify(sent.body)).status, 409)
+  assert.equal((await RentalRequest.findById(rental._id)).status, 'cancelled')
+  assert.equal(await Notification.countDocuments({ type: 'handover_otp' }), 0)
 })
 
-test('audit failure rolls back cancellation and physical handover confirmation', async () => {
+test('audit failure rolls back cancellation and OTP handover verification', async () => {
   await allowCancellation()
-  const sent = await customerSend(); await customerVerify(sent.body)
+  const sent = await send()
   mock.method(AuditLog, 'create', async () => { throw new Error('test rollback') })
   assert.equal((await cancel()).status, 500)
-  assert.equal((await confirmHandover()).status, 500)
+  assert.equal((await verify(sent.body)).status, 500)
   const stored = await RentalRequest.findById(rental._id).select('+handover.pickup')
   assert.equal(stored.status, 'confirmed')
-  assert.equal(stored.handover.pickup.status, 'customer_verified')
-  assert.equal(stored.cancelledAt, undefined)
+  assert.equal(stored.handover.pickup.status, 'sent')
   assert.equal((await Product.findById(product._id)).rentalSlots.length, 1)
 })
 
@@ -374,7 +357,7 @@ test('return uses a separate OTP, records actual return, and releases only this 
   assert.equal((await verify(pickup.body)).status, 200)
   const returned = await send(rental._id, 'return')
   assert.equal(returned.status, 200)
-  assert.equal(emails.at(-1).type, 'return')
+  assert.equal(emails.at(-1).email, admin.email)
   assert.equal((await verify(pickup.body, pickupCode, 'return')).status, 409)
   const otherBooking = new mongoose.Types.ObjectId()
   await Product.updateOne({ _id: product._id }, { $push: { rentalSlots: { requestId: otherBooking, startDate: new Date(Date.now() + 90000000), endDate: new Date(Date.now() + 180000000), status: 'accepted' } } })
@@ -383,7 +366,7 @@ test('return uses a separate OTP, records actual return, and releases only this 
   const stored = await RentalRequest.findById(rental._id)
   assert.equal(stored.status, 'returned')
   assert.ok(stored.returnVerifiedAt)
-  assert.equal(String(stored.returnVerifiedBy), String(admin._id))
+  assert.equal(String(stored.returnVerifiedBy), String(customer._id))
   const slots = (await Product.findById(product._id)).rentalSlots
   assert.equal(slots.length, 1)
   assert.equal(String(slots[0].requestId), String(otherBooking))
@@ -412,7 +395,7 @@ test('unauthenticated customers and rental shops cannot initiate, verify, or rea
   for (const endpoint of [`${base()}/send`, `${base()}/verify`]) assert.equal((await request(app).post(endpoint).set(customerHeaders).send({})).status, 403)
   assert.equal((await request(app).get(`/api/admin/rentals/${rental._id}/history`).set(customerHeaders)).status, 403)
   await User.updateOne({ _id: customer._id }, { $set: { role: 'rental_shop', shopStatus: 'approved' } })
-  assert.equal((await request(app).post(`${base()}/send`).set(customerHeaders).send({})).status, 403)
+  assert.equal((await request(app).post(`${base()}/send`).set(customerHeaders).send({})).status, 404)
 })
 
 test('unpaid, cancelled, returned, unaccepted, and unverified historical rentals are ineligible', async () => {
@@ -424,7 +407,7 @@ test('unpaid, cancelled, returned, unaccepted, and unverified historical rentals
     await RentalRequest.updateOne({ _id: rental._id }, { $set: { status } })
     assert.equal((await send()).status, 409)
   }
-  assert.equal((await send(rental._id, 'return')).body.code, 'PICKUP_NOT_VERIFIED')
+  assert.equal((await send(rental._id, 'return')).body.code, 'INVALID_RETURN')
 })
 
 test('alternative provider status endpoints cannot bypass either verification', async () => {
@@ -462,7 +445,7 @@ test('audit failure rolls back OTP consumption, rental status, and returned inve
   const stored = await RentalRequest.findById(rental._id).select('+handover.return')
   assert.equal(stored.status, 'active')
   assert.equal(stored.returnVerifiedAt, undefined)
-  assert.equal(stored.handover.return.status, 'sent')
+  assert.equal(stored.selfReturns[0].status, 'sent')
   assert.equal((await Product.findById(product._id)).rentalSlots.length, 1)
   mock.restoreAll()
   assert.equal(AuditLog.create, original)
@@ -473,7 +456,7 @@ test('email delivery failure invalidates the challenge and never updates rental 
   failEmail = true
   const response = await send()
   assert.equal(response.status, 502)
-  assert.equal(response.body.code, 'EMAIL_FAILED')
+  assert.equal(response.body.code, 'OTP_DELIVERY_FAILED')
   const stored = await RentalRequest.findById(rental._id).select('+handover.pickup +handover.pickup.otpHash')
   assert.equal(stored.status, 'confirmed')
   assert.equal(stored.handover.pickup.status, 'failed')
@@ -522,11 +505,16 @@ test('strict validation rejects malformed IDs, action types, and codes', async (
   assert.equal((await send(new mongoose.Types.ObjectId())).status, 404)
 })
 
-test('actual email service fails explicitly when SMTP is not configured', async () => {
-  const saved = process.env.SMTP_HOST
-  delete process.env.SMTP_HOST
-  await assert.rejects(() => sendHandoverOtp('customer@example.test', '123456', 'pickup', String(rental._id)), /not configured/)
-  if (saved) process.env.SMTP_HOST = saved
+test('private notification failure invalidates pickup even after email delivery', async () => {
+  mock.method(Notification, 'updateOne', async () => { throw new Error('Inbox unavailable') })
+  const response = await send()
+  assert.equal(response.status, 502)
+  assert.equal(response.body.code, 'OTP_DELIVERY_FAILED')
+  const stored = await RentalRequest.findById(rental._id).select('+handover.pickup +handover.pickup.otpHash')
+  assert.equal(stored.status, 'confirmed')
+  assert.equal(stored.handover.pickup.status, 'failed')
+  assert.equal(stored.handover.pickup.otpHash, undefined)
+  assert.equal(await Notification.countDocuments({ type: 'handover_otp' }), 0)
 })
 
 test('a stale legacy document save cannot overwrite an OTP-verified status', async () => {

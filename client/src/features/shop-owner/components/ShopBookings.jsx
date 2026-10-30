@@ -1,6 +1,6 @@
 import BookingRow from './BookingRow.jsx'
 
-export default function ShopBookings({ busy, decide, requests }) {
+export default function ShopBookings({ busy, decide, requests, onChat }) {
   return (
     <section className="workspace-card">
       <div className="workspace-card-head">
@@ -13,7 +13,14 @@ export default function ShopBookings({ busy, decide, requests }) {
       </div>
       {requests.length ? (
         requests.map((request) => (
-          <BookingRow key={request._id} request={request} decide={decide} busy={busy} expanded />
+          <BookingRow
+            key={request._id}
+            request={request}
+            decide={decide}
+            busy={busy}
+            onChat={onChat}
+            expanded
+          />
         ))
       ) : (
         <div className="workspace-empty">You do not have any booking requests yet.</div>

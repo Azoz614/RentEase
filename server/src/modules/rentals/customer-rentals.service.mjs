@@ -1,20 +1,23 @@
 import { Notification } from '../notifications/notification.model.mjs'
+import { currentNotificationFilter } from '../notifications/handover-notifications.service.mjs'
 import { Product } from '../products/product.model.mjs'
+import { RentalReview } from '../products/rental-review.model.mjs'
+import { User } from '../users/user.model.mjs'
 import { pickupWorkflow, returnWorkflow } from './handover.service.mjs'
 import { cancellationWindowHours, cancellationEligibility } from './cancellation.service.mjs'
 
 // Explicit customer DTOs: never return a rental document or populated administrator wholesale.
 export const customerRentalFields =
-  '_id customerId items startDate endDate addressSnapshot createdAt updatedAt status subtotal total deliveryMethod deliveryWorkflowVersion deliveryReturnRequestedAt deliveryAssignmentRequestedAt returnMethod returnDestination address deliveryFee distanceKm etaMinutes deliveryDestination deliveryQuotedAt estimatedArrivalAt couponCode discountAmount invoiceNumber invoiceIssuedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection.note returnInspection.inspectedAt returnVerifiedAt cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt statusHistory.status statusHistory.previousStatus statusHistory.at payment.status payment.provider payment.method payment.rentalPaid payment.depositHeld payment.depositRefunded payment.paidAt payment.refundedAt payment.adjustments.type payment.adjustments.amount payment.adjustments.note payment.adjustments.createdAt'
+  '_id customerId items declinedItems.title declinedItems.decisionReason startDate endDate addressSnapshot createdAt updatedAt status subtotal total deliveryMethod deliveryWorkflowVersion deliveryReturnRequestedAt deliveryAssignmentRequestedAt returnMethod returnDestination address deliveryFee distanceKm etaMinutes deliveryDestination deliveryQuotedAt estimatedArrivalAt couponCode discountAmount loyaltyReward invoiceNumber invoiceIssuedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection.note returnInspection.inspectedAt returnVerifiedAt cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt statusHistory.status statusHistory.previousStatus statusHistory.at payment.status payment.provider payment.method payment.rentalPaid payment.depositHeld payment.depositRefunded payment.paidAt payment.refundedAt payment.adjustments.type payment.adjustments.amount payment.adjustments.note payment.adjustments.createdAt'
 
 export async function customerRentalViews(rentals, { details = false } = {}) {
   const cancellationHours = await cancellationWindowHours()
   const notices =
     details && rentals.length
       ? await Notification.find({
-          $or: rentals.map((rental) => ({ requestId: rental._id, userId: rental.customerId })),
+          $and: [{ $or: rentals.map((rental) => ({ requestId: rental._id, userId: rental.customerId })) }, currentNotificationFilter()],
         })
-          .select('requestId title body link readAt createdAt')
+          .select('requestId title body link readAt createdAt expiresAt type')
           .sort({ createdAt: -1 })
           .limit(100)
           .lean()
@@ -26,6 +29,27 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
     .select('title category photos location description specifications')
     .lean()
   const byId = new Map(products.map((product) => [String(product._id), product]))
+  const partners = await User.find({ _id: { $in: rentals.flatMap((r) => r.items.map((i) => i.assignedPartner).filter(Boolean)) } })
+    .select('username phone').lean()
+  const reviews = rentals.length
+    ? await RentalReview.find({
+        $or: rentals.map((rental) => ({ requestId: rental._id, authorId: rental.customerId })),
+        direction: 'customer_to_owner',
+      })
+        .select('requestId productId rating comment createdAt')
+        .lean()
+    : []
+  const reviewFor = (rental, item) =>
+    reviews.find(
+      (review) =>
+        String(review.requestId) === String(rental._id) &&
+        String(review.productId) === String(item.productId),
+    )
+  // Mirrors createReview: only accepted items from rentals that actually ended can be rated.
+  const ended = (rental, item) =>
+    item.decision === 'accepted' &&
+    (['returned', 'completed'].includes(rental.status) ||
+      (rental.status !== 'cancelled' && item.deliveryStatus === 'returned'))
   return rentals.map((rental) => {
     const payment = rental.payment || {}
     const result = {
@@ -53,6 +77,15 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
       total: rental.total,
       discountAmount: rental.discountAmount || 0,
       couponCode: rental.couponCode || '',
+      loyaltyReward: rental.loyaltyReward?.productId
+        ? {
+            productId: rental.loyaltyReward.productId,
+            title: rental.loyaltyReward.title,
+            percent: rental.loyaltyReward.percent,
+            amount: rental.loyaltyReward.amount,
+            status: rental.loyaltyReward.status,
+          }
+        : null,
       deliveryMethod: rental.deliveryMethod,
       deliveryWorkflowVersion: rental.deliveryWorkflowVersion,
       deliveryAssignmentRequestedAt: rental.deliveryAssignmentRequestedAt || null,
@@ -89,9 +122,13 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
       },
       items: rental.items.map((item) => {
         const product = byId.get(String(item.productId))
+        const partner = partners.find((p) => String(p._id) === String(item.assignedPartner))
+        const review = reviewFor(rental, item)
         return {
           productId: item.productId,
           title: item.title,
+          // Tells the customer app whether there is a rental shop to message about this item.
+          providerRole: item.providerRole,
           decision: item.decision,
           decisionReason: item.decisionReason || '',
           // Current booking rules reserve one physical item per unique product ID.
@@ -104,9 +141,15 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
           rentalAmount: item.rentalAmount,
           depositAmount: item.depositAmount || 0,
           deliveryStatus: item.deliveryStatus,
+          pickupVerifiedAt: item.pickupVerifiedAt || null,
           partnerAssigned: Boolean(item.assignedPartner),
+          partner: partner ? { name: partner.username, phone: partner.phone || '' } : null,
           image: product?.photos?.[0] || null,
           category: product?.category || '',
+          review: review
+            ? { rating: review.rating, comment: review.comment, createdAt: review.createdAt }
+            : null,
+          reviewable: !review && ended(rental, item),
           ...(details
             ? {
                 product: product
@@ -129,13 +172,15 @@ export async function customerRentalViews(rentals, { details = false } = {}) {
     if (details)
       result.notifications = notices
         .filter((notice) => String(notice.requestId) === String(rental._id))
-        .map(({ _id, title, body, link, readAt, createdAt }) => ({
+        .map(({ _id, title, body, link, readAt, createdAt, expiresAt, type }) => ({
           _id,
           title,
           body,
           link,
           readAt,
           createdAt,
+          expiresAt,
+          type,
         }))
     if (details)
       result.delivery = {

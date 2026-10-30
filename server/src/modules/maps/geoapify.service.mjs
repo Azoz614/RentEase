@@ -5,11 +5,10 @@ export const geoapifyKey = () => process.env.GEOAPIFY_API_KEY?.trim()
 // Keep the server key out of response objects, logs and the client bundle.
 export async function geoapifyRequest(endpoint, parameters) {
   const key = geoapifyKey()
-  if (!key)
-    throw locationError(
-      503,
-      'Geoapify is not configured. Add GEOAPIFY_API_KEY to server/.env and restart the backend.',
-    )
+  if (!key) {
+    console.warn('Geoapify is not configured: set GEOAPIFY_API_KEY in server/.env and restart.')
+    throw locationError(503, 'Maps and delivery routes are temporarily unavailable. Choose self pickup or try again later.')
+  }
   const url = new URL(`https://api.geoapify.com/v1/${endpoint}`)
   url.search = new URLSearchParams({ ...parameters, apiKey: key }).toString()
   let response

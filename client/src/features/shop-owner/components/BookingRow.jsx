@@ -1,6 +1,8 @@
 import { formatCurrency as currency } from '../../../utils/currency.js'
 
-export default function BookingRow({ request, decide, busy, expanded = false }) {
+const decisionLabels = { pending: 'Awaiting decision', accepted: 'Accepted', rejected: 'Declined' }
+
+export default function BookingRow({ request, decide, busy, expanded = false, onChat }) {
   return (
     <article className={`owner-booking-row${expanded ? ' expanded' : ''}`}>
       <div className="owner-booking-main">
@@ -15,6 +17,11 @@ export default function BookingRow({ request, decide, busy, expanded = false }) 
             {request.customerId?.username || 'Customer'} · requested{' '}
             {new Date(request.createdAt).toLocaleDateString()}
           </p>
+          {onChat && (
+            <button type="button" className="owner-message" onClick={() => onChat(request)}>
+              Message customer
+            </button>
+          )}
         </div>
         <span
           className={`booking-status ${request.items.every((item) => item.decision !== 'pending') ? 'resolved' : ''}`}
@@ -27,7 +34,7 @@ export default function BookingRow({ request, decide, busy, expanded = false }) 
           <span>
             <b>{item.title}</b>
             <small>
-              {item.decision} ·{' '}
+              {decisionLabels[item.decision] || item.decision} ·{' '}
               {request.deliveryMethod === 'partner'
                 ? `Partner delivery · ${request.distanceKm?.toFixed(1) || 0} km`
                 : 'Customer pickup'}{' '}
@@ -52,7 +59,7 @@ export default function BookingRow({ request, decide, busy, expanded = false }) 
               </button>
             </div>
           ) : (
-            <em className={item.decision}>{item.decision}</em>
+            <em className={item.decision}>{decisionLabels[item.decision] || item.decision}</em>
           )}
         </div>
       ))}

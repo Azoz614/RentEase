@@ -6,6 +6,7 @@ import { formatCurrencyFixed as money } from '../../../utils/currency.js'
 import { UiIcon } from '../../../components/ui/UiIcon.jsx'
 import '../styles/delivery-dispatch.css'
 import ReturnMethodDialog from '../../rentals/components/ReturnMethodDialog.jsx'
+import { HandoverCodeInput } from '../../rentals/components/HandoverCodeInput.jsx'
 
 const labels = {
   available: 'Waiting for a nearby partner',
@@ -31,7 +32,7 @@ const time = (value) =>
     minute: '2-digit',
   })
 
-export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onReturn }) {
+export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onReturn, hideWhenEmpty = false }) {
   const [data, setData] = useState({ tasks: [], online: false }),
     [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(''),
@@ -53,7 +54,7 @@ export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onRe
         active = owned.filter((t) => !done(t))
       onSummary?.({
         active: active.length,
-        completed: owned.filter((t) => t.status === 'returned').length,
+        completed: owned.filter((t) => ['delivered', 'returned'].includes(t.status)).length,
         fee: active.reduce((sum, t) => sum + Number(t.fee || 0), 0),
         online: result.online,
       })
@@ -114,24 +115,26 @@ export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onRe
           ).values(),
         ]
       : []
+  // Customers see finished trips inside each rental's details, not as a list here.
+  const showCompleted = role !== 'user' && completed.length > 0
+  // Pages that only sometimes have trips (My rentals) show nothing rather than an empty box.
+  if (hideWhenEmpty && !loading && !loadError && !active.length && !returns.length && !showCompleted)
+    return null
   return (
     <section className="dispatch-board" aria-label="Rental delivery and return handovers">
-      <header className="dispatch-heading">
-        <div>
-          <span className="workspace-kicker">SECURE DELIVERY & RETURNS</span>
-          <h2>
-            {role === 'delivery_partner' ? 'Nearby requests & your trips' : 'Delivery progress'}
-          </h2>
-          <p>
-            Follow your journey. Every handover is secured with a fresh email code.
-          </p>
-        </div>
-        <button type="button" onClick={load} aria-label="Refresh delivery requests">
-          <UiIcon name="refresh" size={18} />
-        </button>
-      </header>
+      {/* Riders already have the page title and a refresh button in the top bar. */}
+      {role !== 'delivery_partner' && (
+        <header className="dispatch-heading">
+          <div>
+            <h2>Delivery progress</h2>
+          </div>
+          <button type="button" onClick={load} aria-label="Refresh delivery requests">
+            <UiIcon name="refresh" size={18} />
+          </button>
+        </header>
+      )}
       {role === 'delivery_partner' && <PartnerAvailability api={api} onRefresh={load} />}
-      {data.busy && role === 'delivery_partner' && (
+      {data.busy && role === 'delivery_partner' && !active.length && (
         <p className="dispatch-hint">Finish your current trip before accepting another request.</p>
       )}
       {notice && (
@@ -157,17 +160,30 @@ export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onRe
           Return rental · #{String(task.rentalId).slice(-6).toUpperCase()}
         </button>
       ))}
+      <div className="dispatch-trips">
+        {active.map((task) => (
+          <Trip
+            key={task.id}
+            task={task}
+            api={api}
+            role={role}
+            busy={busy}
+            action={action}
+            post={post}
+          />
+        ))}
+      </div>
       {role === 'delivery_partner' && (
         <section className="dispatch-offers">
-          <h3>Nearby available requests</h3>
-          <p>
-            Nearby riders hear first. Requests expand to more riders until one accepts.
-          </p>
+          <h3>Requests near you</h3>
+          <p>Riders closest to the shop see a request first.</p>
           {!offers.length && !loading && (
             <p className="dispatch-empty">
-              {data.online
-                ? 'No available nearby requests right now.'
-                : 'Go online with your current location to receive requests.'}
+              {data.busy
+                ? 'New requests are paused while you have a trip in progress. Finish or release it to receive more.'
+                : data.online
+                  ? 'No requests near you right now. New ones appear here automatically.'
+                  : 'Go online to start receiving requests.'}
             </p>
           )}
           {offers.map((task) => (
@@ -183,25 +199,7 @@ export default function DeliveryTaskBoard({ api, role, onSummary, rentalId, onRe
           ))}
         </section>
       )}
-      <div className="dispatch-trips">
-        {active.map((task) => (
-          <Trip
-            key={task.id}
-            task={task}
-            api={api}
-            role={role}
-            busy={busy}
-            action={action}
-            post={post}
-          />
-        ))}
-      </div>
-      {!loading && !active.length && role !== 'delivery_partner' && (
-        <p className="dispatch-empty">
-          Approved deliveries and requested return collections will appear here.
-        </p>
-      )}
-      {!!completed.length && (
+      {showCompleted && (
         <details className="dispatch-completed">
           <summary>Recent completed handovers ({completed.length})</summary>
           {completed.map((task) => (
@@ -256,13 +254,13 @@ function Trip({ task, api, role, busy, action, post }) {
           ? 'shop_return'
           : null
   const actionLabel = {
-    shop_pickup: 'Collect product',
+    shop_pickup: 'Hand items to rider',
     customer_delivery: 'Deliver product',
-    customer_return: 'Collect return',
+    customer_return: 'Hand return to rider',
     shop_return: 'Return to shop',
   }[kind]
   const challenge = task.challenge?.kind === kind ? task.challenge : null
-  const canVerify = ['shop_pickup', 'shop_return'].includes(kind) ? task.canManage : task.canOperate
+  const canVerify = task.canVerifyOtp
   const [clock, setClock] = useState(() => Date.now())
   const challengeId = challenge?.id
   useEffect(() => {
@@ -272,6 +270,10 @@ function Trip({ task, api, role, busy, action, post }) {
   }, [challengeId])
   const expiresIn = challenge ? Math.max(0, Math.ceil((new Date(challenge.expiresAt) - clock) / 1000)) : 0
   const resendIn = challenge ? Math.max(0, Math.ceil((new Date(challenge.resendAt) - clock) / 1000)) : 0
+  const [confirmRelease, setConfirmRelease] = useState(false)
+  // Before the rider holds the items, the trip can be handed back so the booking is not stuck.
+  const releasable = Boolean(task.partner) && (task.direction === 'delivery'
+    ? ['assigned', 'heading_to_shop', 'arrived_at_shop'] : ['return_pickup', 'heading_to_customer']).includes(task.status)
   const searching = task.status === 'available' && task.search?.state === 'searching'
   const waiting = task.status === 'available' && (!task.search?.state || task.search.state === 'waiting')
   const exhausted = task.status === 'available' && task.search?.state === 'exhausted'
@@ -302,11 +304,174 @@ function Trip({ task, api, role, busy, action, post }) {
             {task.direction === 'return' ? 'RETURN COLLECTION' : 'SHOP DELIVERY'} · #
             {String(task.rentalId).slice(-6).toUpperCase()}
           </span>
-          <h3>{task.shop}</h3>
-          <p>{task.titles.join(', ')}</p>
+          <h3>{task.titles.join(', ')}</h3>
+          <p>{task.direction === 'return' ? 'Returning to' : 'From'} <b>{task.shop}</b></p>
         </div>
         <span className="dispatch-status">{waiting ? 'Ready to assign' : exhausted ? 'No rider accepted' : labels[task.status] || task.status}</span>
       </header>
+      {task.otpNotice && <aside className="dispatch-private-code" role="status">
+        <UiIcon name="shield" size={22} /><div><b>Private handover code · just for you</b><p>{task.otpNotice.body}</p></div>
+      </aside>}
+      {kind && !done(task) && <section className="dispatch-next-step" aria-label="Next handover">
+        <span className="dispatch-next-icon"><UiIcon name="shield" size={23} /></span>
+        <div><span className="workspace-kicker">NEXT HANDOVER</span>
+          <h4>{task.canSendOtp ? actionLabel : ({ shop_pickup: 'Waiting for the shop handover', customer_delivery: 'Your delivery is on the way', customer_return: 'Waiting for the customer handover', shop_return: 'Waiting for the rider’s return' })[kind]}</h4>
+          <p>{task.canSendOtp ? 'Send the recipient a private code. Enter the code they share after receiving the items.'
+            : ({ shop_pickup: 'The shop sends your receipt code. Share it with the shop after receiving the items.', customer_delivery: 'The rider sends your receipt code. Share it after your items arrive.', customer_return: 'The customer sends the code to the rider, then verifies it after handing over the return.', shop_return: 'The rider sends the shop a receipt code and verifies it after the shop receives the items.' })[kind]}</p>
+        </div>
+      </section>}
+      <div className="dispatch-actions">
+        {role === 'user' && (waiting || exhausted) && <button className="dispatch-primary" disabled={Boolean(busy) || (task.direction === 'delivery' && !task.paid)}
+          title={task.direction === 'delivery' && !task.paid ? 'Pay for the booking first' : undefined}
+          onClick={() => action(task.id, () => post(task.direction === 'delivery'
+            ? 'rentals/' + task.rentalId + '/assign' : base + '/search'))}>
+          <UiIcon name="truck" size={17} /> {exhausted ? 'Search for riders again' : 'Assign delivery partner'}
+        </button>}
+        {role === 'user' && task.direction === 'return' && task.status === 'available' && (
+          <button disabled={Boolean(busy)}
+            onClick={() => action(task.id, () => post('rentals/' + task.rentalId + '/return/cancel'))}>
+            Cancel collection · return it myself
+          </button>
+        )}
+        {task.status === 'available' && role === 'delivery_partner' && (
+          <>
+            <button
+              className="dispatch-primary"
+              disabled={Boolean(busy)}
+              onClick={() => action(task.id, () => post(base + '/accept'))}
+            >
+              Accept request
+            </button>
+            <button
+              disabled={Boolean(busy)}
+              onClick={() => action(task.id, () => post(base + '/decline'))}
+            >
+              Decline
+            </button>
+          </>
+        )}
+        {releasable && (task.canOperate || task.canManage) && (
+          confirmRelease ? (
+            <span className="dispatch-confirm" role="group" aria-label="Confirm releasing this trip">
+              <span>{task.canOperate ? 'Release this trip? Another rider will be found.' : 'Remove this rider and find another?'}</span>
+              <button className="dispatch-danger" disabled={Boolean(busy)}
+                onClick={() => action(task.id, () => post(base + '/release'))}>
+                Yes, release
+              </button>
+              <button disabled={Boolean(busy)} onClick={() => setConfirmRelease(false)}>Keep</button>
+            </span>
+          ) : (
+            <button disabled={Boolean(busy)} onClick={() => setConfirmRelease(true)}>
+              {task.canOperate ? 'Can’t make it? Release trip' : 'Find another rider'}
+            </button>
+          )
+        )}
+        {task.canManage && task.direction === 'delivery' && !task.ready && !done(task) && (
+          <button
+            disabled={Boolean(busy) || !task.paid}
+            onClick={() => action(task.id, () => post(base + '/ready'))}
+          >
+            Mark shop items ready
+          </button>
+        )}
+        {task.canOperate && next && (
+          <button
+            disabled={Boolean(busy)}
+            onClick={() =>
+              action(task.id, () =>
+                api('/api/delivery/' + base + '/status', {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: next[0] }),
+                }),
+              )
+            }
+          >
+            {next[1]}
+          </button>
+        )}
+        {task.canSendOtp && kind && (
+          <button
+            className="dispatch-primary"
+            disabled={Boolean(busy) || resendIn > 0 || (kind === 'shop_pickup' && (!task.paid || !task.ready))}
+            onClick={() => action(task.id, () => post(base + '/otp/send', { kind }))}
+          >
+            {resendIn > 0 ? `Resend in ${resendIn}s` : challenge
+              ? 'Resend ' + actionLabel.toLowerCase() + ' code'
+              : actionLabel + ' · send OTP'}
+          </button>
+        )}
+        {navigate && (
+          <a className="dispatch-link" href={navigate} target="_blank" rel="noreferrer">
+            Open navigation
+          </a>
+        )}
+        <button
+          disabled={Boolean(busy)}
+          onClick={() => {
+            setMapOpen(!mapOpen)
+          }}
+        >
+          {' '}
+          {mapOpen ? 'Hide map' : 'View map'}{' '}
+        </button>
+      </div>
+      {challenge && (
+        <div className="dispatch-challenge">
+          <div className="dispatch-challenge-heading"><UiIcon name="shield" size={20} /><b>Verify the recipient’s code</b><span>Single use</span></div>
+          <p>
+            Code sent to {challenge.maskedEmail}. {expiresIn > 0 ? `${Math.floor(expiresIn / 60)}:${String(expiresIn % 60).padStart(2, '0')} remaining` : 'Code expired · request a new code.'}
+          </p>
+          <p>
+            The recipient receives the code by email and private notification. Ask for it after handing over the items.
+          </p>
+          {canVerify && expiresIn > 0 && (
+            <form
+              key={challenge.id}
+              onSubmit={(event) => {
+                event.preventDefault()
+                const values = new FormData(event.currentTarget)
+                action(task.id, () =>
+                  post(base + '/otp/verify', {
+                    kind,
+                    challengeId: challenge.id,
+                    code: String(values.get('code') || ''),
+                    inspectionNote: values.get('inspectionNote'),
+                  }),
+                )
+              }}
+            >
+              <label>
+                Six-digit handover code
+                <HandoverCodeInput
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  placeholder="000000"
+                  disabled={Boolean(busy)}
+                />
+              </label>
+              {kind === 'shop_return' && (
+                <label>
+                  Return inspection
+                  <textarea
+                    name="inspectionNote"
+                    minLength={5}
+                    maxLength={1000}
+                    disabled={Boolean(busy)}
+                    placeholder="Condition of the returned items (optional)"
+                  />
+                </label>
+              )}
+              <button className="dispatch-primary" disabled={Boolean(busy)}>
+                {busy === task.id ? 'Verifying…' : 'Verify handover'}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
       <ol className="dispatch-stepper" aria-label="Delivery progress">
         {(task.direction === 'return' ? ['Rider assigned', 'Collected', 'Returning', 'Shop received']
           : ['Rider assigned', 'Shop collected', 'On the way', 'Delivered']).map((label, index) => {
@@ -341,9 +506,9 @@ function Trip({ task, api, role, busy, action, post }) {
             ? 'Travel estimate unavailable'
             : 'About ' + (route?.etaMinutes ?? task.etaMinutes) + ' min'}
         </span>
-        <b>{role === 'delivery_partner' ? 'Trip earnings' : 'Booked delivery fee'} {money(task.fee || 0)}</b>
+        <b>{role === 'delivery_partner' ? 'Trip fee' : 'Booked delivery fee'} {money(task.fee || 0)}</b>
       </div>
-      {task.partner && (
+      {task.partner && role !== 'delivery_partner' && (
         <div className="dispatch-contact">
           <span className="dispatch-avatar" aria-hidden="true">{task.partner.name.slice(0, 1).toUpperCase()}</span>
           <span>
@@ -356,147 +521,23 @@ function Trip({ task, api, role, busy, action, post }) {
           )}
         </div>
       )}
+      {role === 'delivery_partner' && task.contacts && <div className="dispatch-job-contacts">
+        {Object.entries(task.contacts).map(([key, contact]) => contact && <div className="dispatch-contact" key={key}>
+          <span><small>{key === 'shop' ? 'Shop contact' : 'Customer contact'}</small><b>{contact.name}</b></span>
+          {contact.phone && <a href={'tel:' + contact.phone.replace(/[^+\d]/g, '')}>{contact.phone}</a>}
+        </div>)}
+      </div>}
       {searching && role !== 'delivery_partner' && <div className="dispatch-search" role="status">
         <span className="dispatch-radar"><UiIcon name="truck" size={24} /></span>
         <div><b>Finding nearby riders</b><p>{task.search.radiusMeters >= 20000000 ? 'Checking all remaining available riders' : `Searching within ${task.search.radiusMeters / 1000} km of pickup`} · we’ll expand automatically.</p></div>
       </div>}
       {exhausted && <p role="status" className="dispatch-hint">No available rider accepted this time. You can start another search.</p>}
-      {!task.ready && task.direction === 'delivery' && (
+      {!task.ready && task.direction === 'delivery' && role !== 'delivery_partner' && (
         <p className="dispatch-hint">
           {task.paid
             ? 'Waiting for shop preparation before collection.'
             : 'Payment must be recorded before collection.'}
         </p>
-      )}
-      <div className="dispatch-actions">
-        {role === 'user' && (waiting || exhausted) && <button className="dispatch-primary" disabled={Boolean(busy)}
-          onClick={() => action(task.id, () => post(task.direction === 'delivery'
-            ? 'rentals/' + task.rentalId + '/assign' : base + '/search'))}>
-          <UiIcon name="truck" size={17} /> {exhausted ? 'Search for riders again' : 'Assign Delivery Partner'}
-        </button>}
-        {task.status === 'available' && role === 'delivery_partner' && (
-          <>
-            <button
-              className="dispatch-primary"
-              disabled={Boolean(busy)}
-              onClick={() => action(task.id, () => post(base + '/accept'))}
-            >
-              Accept request
-            </button>
-            <button
-              disabled={Boolean(busy)}
-              onClick={() => action(task.id, () => post(base + '/decline'))}
-            >
-              Decline
-            </button>
-          </>
-        )}
-        {task.canManage && task.direction === 'delivery' && !task.ready && !done(task) && (
-          <button
-            disabled={Boolean(busy) || !task.paid}
-            onClick={() => action(task.id, () => post(base + '/ready'))}
-          >
-            Mark shop items ready
-          </button>
-        )}
-        {task.canOperate && next && (
-          <button
-            disabled={Boolean(busy)}
-            onClick={() =>
-              action(task.id, () =>
-                api('/api/delivery/' + base + '/status', {
-                  method: 'PATCH',
-                  body: JSON.stringify({ status: next[0] }),
-                }),
-              )
-            }
-          >
-            {next[1]}
-          </button>
-        )}
-        {task.canOperate && kind && (
-          <button
-            className="dispatch-primary"
-            disabled={Boolean(busy) || resendIn > 0 || (kind === 'shop_pickup' && (!task.paid || !task.ready))}
-            onClick={() => action(task.id, () => post(base + '/otp/send', { kind }))}
-          >
-            {resendIn > 0 ? `Resend in ${resendIn}s` : challenge
-              ? 'Resend ' + actionLabel.toLowerCase() + ' code'
-              : actionLabel + ' · send OTP'}
-          </button>
-        )}
-        {navigate && (
-          <a className="dispatch-link" href={navigate} target="_blank" rel="noreferrer">
-            Open navigation
-          </a>
-        )}
-        <button
-          disabled={Boolean(busy)}
-          onClick={() => {
-            setMapOpen(!mapOpen)
-          }}
-        >
-          {' '}
-          {mapOpen ? 'Hide map' : 'View map'}{' '}
-        </button>
-      </div>
-      {challenge && (
-        <div className="dispatch-challenge">
-          <p>
-            Code sent to {challenge.maskedEmail}. {expiresIn > 0 ? `${Math.floor(expiresIn / 60)}:${String(expiresIn % 60).padStart(2, '0')} remaining` : 'Code expired · request a new code.'}
-          </p>
-          <p>
-            {['shop_pickup', 'shop_return'].includes(kind)
-              ? 'The rider receives this code and provides it to the shop. Authorized shop staff verify it after the physical handover.'
-              : 'The email recipient provides this code to the assigned partner at the handover.'}
-          </p>
-          {canVerify && expiresIn > 0 && (
-            <form
-              key={challenge.id}
-              onSubmit={(event) => {
-                event.preventDefault()
-                const values = new FormData(event.currentTarget)
-                action(task.id, () =>
-                  post(base + '/otp/verify', {
-                    kind,
-                    challengeId: challenge.id,
-                    code: String(values.get('code') || ''),
-                    inspectionNote: values.get('inspectionNote'),
-                  }),
-                )
-              }}
-            >
-              <label>
-                Six-digit handover code
-                <input
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  placeholder="000000"
-                  disabled={Boolean(busy)}
-                />
-              </label>
-              {kind === 'shop_return' && (
-                <label>
-                  Return inspection
-                  <textarea
-                    name="inspectionNote"
-                    minLength={5}
-                    maxLength={1000}
-                    disabled={Boolean(busy)}
-                    placeholder="Condition of the returned items (optional)"
-                  />
-                </label>
-              )}
-              <button className="dispatch-primary" disabled={Boolean(busy)}>
-                {busy === task.id ? 'Verifying…' : 'Verify handover'}
-              </button>
-            </form>
-          )}
-        </div>
       )}
       {mapOpen && (
         <div className="dispatch-map">
@@ -552,6 +593,11 @@ function Trip({ task, api, role, busy, action, post }) {
             </li>
           ))}
         </ol>
+        {task.verifications?.length > 0 && <ol className="dispatch-verification-records" aria-label="Verified handovers">
+          {task.verifications.map((v, index) => <li key={index}><b>{v.kind.replaceAll('_', ' ')} verified</b><time>{time(v.at)}</time>
+            {v.senderId && <small>Sender: {v.senderName || v.senderId} · Recipient: {v.recipientName || v.recipientId} · Verifier: {v.verifierName || v.verifiedBy}</small>}
+          </li>)}
+        </ol>}
       </details>
     </article>
   )

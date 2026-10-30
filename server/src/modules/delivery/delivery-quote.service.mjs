@@ -98,7 +98,7 @@ const cents = (amount) => {
     throw locationError(503, 'The delivery pricing settings are invalid.')
   return Math.round(amount * 100)
 }
-const fee = (distance, base, rate) => (cents(base) + Math.round(distance * cents(rate))) / 100
+export const fee = (distance, base, rate) => (cents(base) + Math.round(distance * cents(rate))) / 100
 export async function calculateDelivery(products, destination) {
   const ids = [
     ...new Set(

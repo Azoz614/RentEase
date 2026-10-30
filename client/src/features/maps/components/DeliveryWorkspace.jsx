@@ -5,7 +5,7 @@ import GeoapifyMap from './GeoapifyMap.jsx'
 import { TaskCard } from './TaskCard.jsx'
 import { stages, label } from '../utils/deliveryStages.js'
 
-export function DeliveryWorkspace({ api, role }) {
+export function DeliveryWorkspace({ api, role, hideWhenEmpty = false }) {
   const [data, setData] = useState({ tasks: [], shops: [] }),
     [error, setError] = useState(''),
     [type, setType] = useState('all'),
@@ -69,6 +69,7 @@ export function DeliveryWorkspace({ api, role }) {
         : []),
     ]),
   ]
+  if (hideWhenEmpty && !loading && !data.tasks.length && !error) return null
   return (
     <section className="re-map-panel">
       <h2>Delivery & return tracking</h2>

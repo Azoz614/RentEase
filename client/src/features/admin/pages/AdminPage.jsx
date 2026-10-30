@@ -11,6 +11,7 @@ import PromotionsPanel from '../components/PromotionsPanel.jsx'
 import ActivityPanel from '../components/ActivityPanel.jsx'
 import EditProductDialog from '../components/EditProductDialog.jsx'
 import CreateProductDialog from '../components/CreateProductDialog.jsx'
+import AdminPasswordDialog from '../components/AdminPasswordDialog.jsx'
 import '../styles/admin.css'
 
 import { BrandMark } from '../../../components/ui/BrandMark.jsx'
@@ -22,11 +23,14 @@ import { ShopLocation } from '../../maps/components/ShopLocation.jsx'
 import RentalHandover from '../../rentals/pages/RentalHandover.jsx'
 import CustomerVerifications from '../../identity/pages/CustomerVerifications.jsx'
 import NotificationCenter from '../../notifications/pages/NotificationCenter.jsx'
+import NotificationBell from '../../notifications/components/NotificationBell.jsx'
+import { useNotificationCount } from '../../notifications/hooks/useNotificationCount.js'
 import RentalDecisionDialog from '../../rentals/components/RentalDecisionDialog.jsx'
 
 import { sections, descriptions } from '../utils/adminPresentation.js'
+import WorkspaceAccountMenu from '../../../components/account/WorkspaceAccountMenu.jsx'
 
-export default function AdminPage({ user, token, onLogout }) {
+export default function AdminPage({ user, token, onLogout, onAccountUpdate }) {
   const {
     section,
     setSection,
@@ -37,8 +41,8 @@ export default function AdminPage({ user, token, onLogout }) {
     auditEvents,
     coupons,
     packages,
-    declineTarget,
-    setDeclineTarget,
+    decisionTarget,
+    setDecisionTarget,
     revenue,
     photos,
     setPhotos,
@@ -72,19 +76,24 @@ export default function AdminPage({ user, token, onLogout }) {
     refreshRequests,
     pendingRequests,
     runAction,
-    handlePhotos,
     submitProduct,
     openAddItem,
     submitUser,
     submitCoupon,
     submitPackage,
     updateUser,
+    deleteUser,
+    holdProduct,
+    deleteProduct,
+    passwordPrompt,
+    setPasswordPrompt,
     reviewShop,
     visibleProducts,
     visibleUsers,
     exportCsv,
     editProduct,
   } = useAdminWorkspace({ user, token })
+  const unread = useNotificationCount(api)
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
@@ -103,7 +112,7 @@ export default function AdminPage({ user, token, onLogout }) {
           items={sections.map(([id, label]) => ({
             id,
             label,
-            badge: id === 'shops' ? overview.pendingShops : id === 'requests' ? pendingRequests : 0,
+            badge: id === 'shops' ? overview.pendingShops : id === 'requests' ? pendingRequests : id === 'notifications' ? unread : 0,
           }))}
           onSelect={(id) => {
             setSection(id)
@@ -126,13 +135,8 @@ export default function AdminPage({ user, token, onLogout }) {
 
       <section className="admin-main">
         <header className="admin-topbar">
-          <div>
-            <span>RentEase /</span> {sections.find(([id]) => id === section)?.[1]}
-          </div>
           <div className="admin-topbar-actions">
-            <span className="admin-location">
-              <UiIcon name="shield" size={14} /> Admin workspace
-            </span>
+            <NotificationBell api={api} unreadCount={unread} onHistory={() => setSection('notifications')} onNavigate={(target) => setSection(target === 'verification' ? 'identity' : 'requests')} />
             <button
               type="button"
               className="admin-refresh"
@@ -141,12 +145,12 @@ export default function AdminPage({ user, token, onLogout }) {
               <UiIcon name="refresh" size={16} />
               <span>Refresh</span>
             </button>
+            <WorkspaceAccountMenu user={user} api={api} onLogout={onLogout} onAccountUpdate={onAccountUpdate} />
           </div>
         </header>
         <div className="admin-content">
           <div className="admin-page-heading">
             <div>
-              <span className="admin-kicker">CONTROL CENTER</span>
               <h1>
                 {section === 'overview'
                   ? `Welcome back, ${user.username}.`
@@ -154,7 +158,7 @@ export default function AdminPage({ user, token, onLogout }) {
               </h1>
               <p>
                 {section === 'overview'
-                  ? 'Manage listings, accounts, and rental shop applications.'
+                  ? 'Here is what is happening on RentEase today.'
                   : descriptions[section]}
               </p>
             </div>
@@ -215,17 +219,23 @@ export default function AdminPage({ user, token, onLogout }) {
           )}
 
           {section === 'overview' && (
-            <OverviewPanel overview={overview} products={products} setSection={setSection} />
+            <OverviewPanel
+              overview={overview}
+              pendingRequests={pendingRequests}
+              products={products}
+              setSection={setSection}
+            />
           )}
 
           {section === 'products' && (
             <ProductsPanel
-              api={api}
+              busy={busy}
+              deleteProduct={deleteProduct}
               exportCsv={exportCsv}
+              holdProduct={holdProduct}
               productSearch={productSearch}
               productStatus={productStatus}
               products={products}
-              runAction={runAction}
               setEditingProduct={setEditingProduct}
               setProductSearch={setProductSearch}
               setProductStatus={setProductStatus}
@@ -239,14 +249,14 @@ export default function AdminPage({ user, token, onLogout }) {
               busy={busy}
               rentalRequests={rentalRequests}
               requestsLoading={requestsLoading}
-              runAction={runAction}
-              setDeclineTarget={setDeclineTarget}
+              setDecisionTarget={setDecisionTarget}
             />
           )}
 
           {section === 'users' && (
             <UsersPanel
               busy={busy}
+              deleteUser={deleteUser}
               exportCsv={exportCsv}
               setUserRole={setUserRole}
               setUserSearch={setUserSearch}
@@ -268,6 +278,7 @@ export default function AdminPage({ user, token, onLogout }) {
 
           {section === 'reports' && (
             <ReportsPanel
+              api={api}
               exportCsv={exportCsv}
               overview={overview}
               products={products}
@@ -301,6 +312,7 @@ export default function AdminPage({ user, token, onLogout }) {
       </section>
       {editingProduct && (
         <EditProductDialog
+          key={editingProduct._id}
           busy={busy}
           editProduct={editProduct}
           editingProduct={editingProduct}
@@ -310,7 +322,6 @@ export default function AdminPage({ user, token, onLogout }) {
       {addItemOpen && (
         <CreateProductDialog
           busy={busy}
-          handlePhotos={handlePhotos}
           newItemType={newItemType}
           photos={photos}
           setAddItemOpen={setAddItemOpen}
@@ -320,13 +331,16 @@ export default function AdminPage({ user, token, onLogout }) {
           users={users}
         />
       )}
-      {declineTarget && (
+      {passwordPrompt && (
+        <AdminPasswordDialog prompt={passwordPrompt} onClose={() => setPasswordPrompt(null)} />
+      )}
+      {decisionTarget && (
         <RentalDecisionDialog
-          target={declineTarget}
+          target={decisionTarget}
           api={api}
-          onClose={() => setDeclineTarget(null)}
+          onClose={() => setDecisionTarget(null)}
           onDecided={async (message) => {
-            setDeclineTarget(null)
+            setDecisionTarget(null)
             setMessage(message)
             setReload((value) => value + 1)
           }}

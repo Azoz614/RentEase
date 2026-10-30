@@ -1,3 +1,4 @@
+import ProductReviews from './ProductReviews.jsx'
 import { ProductLocation } from '../../maps/components/ProductLocation.jsx'
 import ProductGallery from './ProductGallery.jsx'
 
@@ -5,8 +6,6 @@ import { formatCurrency as money } from '../../../utils/currency.js'
 
 export default function ProductDetailsContent({
   selectedProduct,
-  productReviews,
-  reviewsLoading,
   children,
 }) {
   return (
@@ -17,7 +16,7 @@ export default function ProductDetailsContent({
       <div className="product-detail-copy">
         <span className="market-kicker">{selectedProduct.category}</span>
         <h2>{selectedProduct.title}</h2>
-        <div className="product-detail-rating">
+        <a className="product-detail-rating" href="#product-ratings">
           <b aria-label={`${Number(selectedProduct.ratingAverage || 0).toFixed(1)} out of 5 stars`}>
             ★ {Number(selectedProduct.ratingAverage || 0).toFixed(1)}
           </b>
@@ -25,7 +24,7 @@ export default function ProductDetailsContent({
             {selectedProduct.ratingCount || 0}{' '}
             {Number(selectedProduct.ratingCount || 0) === 1 ? 'review' : 'reviews'}
           </span>
-        </div>
+        </a>
         <p className="product-detail-description">{selectedProduct.description}</p>
         <div className="product-detail-price">
           <b>
@@ -75,35 +74,9 @@ export default function ProductDetailsContent({
             </dl>
           </section>
         )}
-        <section className="product-detail-reviews">
-          <div className="product-detail-reviews-heading">
-            <h3>Ratings & reviews</h3>
-            <span>{selectedProduct.ratingCount || 0} total</span>
-          </div>
-          {reviewsLoading ? (
-            <p className="product-detail-reviews-empty">Loading reviews…</p>
-          ) : productReviews.length ? (
-            productReviews.map((review) => (
-              <article className="product-detail-review" key={review._id}>
-                <div>
-                  <b>{review.authorId?.username || 'Customer'}</b>
-                  <span>
-                    {'★'.repeat(review.rating)}
-                    {'☆'.repeat(5 - review.rating)}
-                  </span>
-                </div>
-                <small>{new Date(review.createdAt).toLocaleDateString()}</small>
-                {review.comment && <p>{review.comment}</p>}
-              </article>
-            ))
-          ) : (
-            <p className="product-detail-reviews-empty">
-              No reviews yet. Reviews appear after completed rentals.
-            </p>
-          )}
-        </section>
         {children}
       </div>
+      <ProductReviews key={selectedProduct._id} product={selectedProduct} />
     </div>
   )
 }

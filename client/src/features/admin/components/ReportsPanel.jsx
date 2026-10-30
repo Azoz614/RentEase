@@ -1,10 +1,12 @@
 import { roleLabels } from '../utils/adminPresentation.js'
 import { Stat } from './Stat.jsx'
 import { Empty } from './Empty.jsx'
+import CommissionPanel from '../../payments/components/CommissionPanel.jsx'
 
-export default function ReportsPanel({ exportCsv, overview, products, revenue, users }) {
+export default function ReportsPanel({ exportCsv, overview, products, revenue, users, api }) {
   return (
     <>
+      {api && <CommissionPanel api={api} role="admin" />}
       <div className="admin-report-actions">
         <button
           type="button"
@@ -45,21 +47,21 @@ export default function ReportsPanel({ exportCsv, overview, products, revenue, u
       </div>
       <div className="admin-stat-grid">
         <Stat
-          label="Rental revenue"
+          label="Booking charges recorded"
           value={`LKR ${Number(revenue.rentalCollected || 0).toLocaleString('en-LK')}`}
-          detail={`${revenue.bookings || 0} bookings`}
+          detail={`${revenue.paidBookings || 0} paid of ${revenue.bookings || 0} bookings`}
           mark="LKR"
         />
         <Stat
-          label="Deposits held"
-          value={`LKR ${Number(revenue.depositsHeld || 0).toLocaleString('en-LK')}`}
-          detail={`LKR ${Number(revenue.depositsRefunded || 0).toLocaleString('en-LK')} released`}
+          label="Deposits outstanding"
+          value={`LKR ${Math.max(0, Number(revenue.depositsHeld || 0) - Number(revenue.depositsRefunded || 0) - Number(revenue.adjustmentsRetained || 0)).toLocaleString('en-LK')}`}
+          detail={`LKR ${Number(revenue.depositsHeld || 0).toLocaleString('en-LK')} held · ${Number(revenue.depositsRefunded || 0).toLocaleString('en-LK')} released`}
           mark="D"
         />
         <Stat
-          label="Retained adjustments"
+          label="Fees kept from deposits"
           value={`LKR ${Number(revenue.adjustmentsRetained || 0).toLocaleString('en-LK')}`}
-          detail="Late and damage fees"
+          detail="Late, damage and return collection fees"
           mark="+"
         />
       </div>

@@ -1,10 +1,14 @@
 import { BrandMark } from '../../../components/ui/BrandMark.jsx'
 import { UiIcon } from '../../../components/ui/UiIcon.jsx'
 import Icon from './AccountIcon.jsx'
+import NotificationBell from '../../notifications/components/NotificationBell.jsx'
+import { useRef } from 'react'
+import { useDismiss } from '../../../components/ui/useDismiss.js'
 
 export default function CustomerNavigation({
   animateSignOut,
   loyaltyPoints,
+  loyalty,
   openInbox,
   openProfileSettings,
   panel,
@@ -14,7 +18,13 @@ export default function CustomerNavigation({
   setProfileMenuOpen,
   unread,
   user,
+  api,
+  onNotification,
+  chatUnread = 0,
 }) {
+  const profileMenu = useRef(null),
+    profileTrigger = useRef(null)
+  useDismiss(profileMenu, profileMenuOpen, () => setProfileMenuOpen(false), profileTrigger)
   return (
     <header className="market-nav">
       <a className="market-brand" href="/">
@@ -41,6 +51,18 @@ export default function CustomerNavigation({
           <Icon name="rent" />
           <span>My rentals</span>
         </button>
+        <button
+          type="button"
+          className={`market-rewards-link${panel === 'rewards' ? ' active' : ''}`}
+          aria-pressed={panel === 'rewards'}
+          aria-label={`Rewards, level ${loyalty?.level ?? 0}${loyalty?.rewardsAvailable ? `, ${loyalty.rewardsAvailable} ready` : ''}`}
+          onClick={() => setPanel('rewards')}
+        >
+          <UiIcon name="star" size={18} />
+          <span>Rewards</span>
+          <small className="market-rewards-level">Lv {loyalty?.level ?? 0}</small>
+          {loyalty?.rewardsAvailable > 0 && <i className="market-rewards-dot" aria-hidden="true" />}
+        </button>
       </nav>
       <div className="market-actions">
         <button
@@ -52,23 +74,28 @@ export default function CustomerNavigation({
           <Icon name="wishlist" />
         </button>
         <button
-          className={`market-icon-button${panel === 'inbox' ? ' active' : ''}`}
-          aria-label="Notifications"
-          title="Notifications"
-          onClick={openInbox}
+          className={`market-icon-button${panel === 'messages' ? ' active' : ''}`}
+          aria-label={`Messages${chatUnread ? `, ${chatUnread} unread` : ''}`}
+          title="Messages"
+          onClick={() => setPanel('messages')}
         >
-          <Icon name="bell" />
-          {unread > 0 && <b className="inbox-count">{unread}</b>}
+          <UiIcon name="chat" size={20} />
+          {chatUnread > 0 && <span className="inbox-count">{chatUnread}</span>}
         </button>
-        <div className="profile-menu-wrap">
+        <NotificationBell api={api} fallback={unread} onHistory={openInbox} onNavigate={onNotification} />
+        <div className="profile-menu-wrap" ref={profileMenu}>
           <button
+            ref={profileTrigger}
             className="profile-trigger"
             aria-expanded={profileMenuOpen}
             aria-label="Open profile menu"
             onClick={() => setProfileMenuOpen((open) => !open)}
           >
             <span className="profile-avatar">{user.username?.[0]?.toUpperCase() || 'U'}</span>
-            <span className="profile-trigger-name">{user.username}</span>
+            <span className="profile-trigger-name">
+              <b>{user.username}</b>
+              <small>Customer</small>
+            </span>
             <Icon name="chevron" />
           </button>
           {profileMenuOpen && (
@@ -79,8 +106,17 @@ export default function CustomerNavigation({
                 </span>
                 <div>
                   <b>{user.username}</b>
-                  <small>{user.email}</small>
-                  <small>{loyaltyPoints} loyalty points</small>
+                  <small>Customer</small>
+                  <button
+                    type="button"
+                    className="profile-dropdown-points"
+                    onClick={() => {
+                      setProfileMenuOpen(false)
+                      setPanel('rewards')
+                    }}
+                  >
+                    {loyaltyPoints} loyalty points · Level {loyalty?.level ?? 0} →
+                  </button>
                 </div>
               </div>
               <div className="profile-dropdown-sections">
@@ -109,6 +145,23 @@ export default function CustomerNavigation({
                   <span>
                     <b>Contact information</b>
                     <small>Email, phone and address</small>
+                  </span>
+                  <Icon name="chevron" />
+                </button>
+                <button
+                  type="button"
+                  className="profile-dropdown-item"
+                  onClick={() => {
+                    setProfileMenuOpen(false)
+                    setPanel('addresses')
+                  }}
+                >
+                  <span className="profile-item-icon">
+                    <UiIcon name="pin" size={18} />
+                  </span>
+                  <span>
+                    <b>Saved addresses</b>
+                    <small>Delivery and return locations</small>
                   </span>
                   <Icon name="chevron" />
                 </button>

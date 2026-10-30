@@ -20,9 +20,18 @@ import '../styles/marketplace.css'
 
 import AccountSettingsDialog from '../components/AccountSettingsDialog.jsx'
 
-import ProductDetailsContent from '../../products/components/ProductDetailsContent.jsx'
+import ProductPage from '../../products/pages/ProductPage.jsx'
+import LoyaltyPanel from '../../loyalty/components/LoyaltyPanel.jsx'
+import CartShopDialog from '../components/CartShopDialog.jsx'
+import { providerOf, shopNameOf } from '../../rentals/utils/rentalShop.js'
+import { useState } from 'react'
+import SiteFooter from '../../../components/layout/SiteFooter.jsx'
+import ChatScreen from '../../chat/components/ChatScreen.jsx'
+import useConversations from '../../chat/hooks/useConversations.js'
+import { UiIcon } from '../../../components/ui/UiIcon.jsx'
 
 function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
+  const [notificationRentalId, setNotificationRentalId] = useState(null)
   const {
     products,
     productsLoading,
@@ -33,6 +42,15 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
     address,
     savedAddress,
     loyaltyPoints,
+    loyalty,
+    rewardProductId,
+    setRewardChoice,
+    redeemReward,
+    loyaltyDiscount,
+    cartShop,
+    cartConflict,
+    setCartConflict,
+    startRequestWith,
     identityProfile,
     setIdentityProfile,
     startDate,
@@ -70,8 +88,6 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
     signingOut,
     selectedProduct,
     setSelectedProduct,
-    productReviews,
-    reviewsLoading,
     animateSignOut,
     api,
     accountSettings,
@@ -89,6 +105,8 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
     searchSuggestions,
     visible,
     cartProducts,
+    removeFromCart,
+    clearCart,
     hours,
     days,
     durationLabel,
@@ -97,6 +115,7 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
     checkout,
     toggleWishlist,
     openProductDetails,
+    closeProductDetails,
     handleProductCardKey,
     applyCoupon,
     calculateDelivery,
@@ -104,11 +123,25 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
     changeBillingUnit,
     today,
   } = useMarketplace({ user, token, onLogout, onAccountUpdate })
+  const chats = useConversations(api)
+  // target is { productId } from a listing or { requestId } from a rental. The product page is
+  // hidden directly (not via history.back) so Back from Messages returns to it.
+  const messageShop = (target) => {
+    setSelectedProduct(null)
+    setPanel('messages')
+    chats.startChat(target)
+  }
+  const openNotification = (target, row) => {
+    if (row?.requestId) setNotificationRentalId(String(row.requestId))
+    setPanel(['verification', 'addresses', 'requests'].includes(target) ? target : row?.deliveryTaskId ? 'requests' : 'inbox')
+  }
   return (
+    <>
     <main className="marketplace">
       <CustomerNavigation
         animateSignOut={animateSignOut}
         loyaltyPoints={loyaltyPoints}
+        loyalty={loyalty}
         openInbox={openInbox}
         openProfileSettings={openProfileSettings}
         panel={panel}
@@ -118,15 +151,20 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
         setProfileMenuOpen={setProfileMenuOpen}
         unread={unread}
         user={user}
+        api={api}
+        onNotification={openNotification}
+        chatUnread={chats.unread}
       />
 
       <div className="market-content re-content-transition">
         {panel === 'browse' && (
           <RentalCatalog
             addToRequest={addToRequest}
+            removeFromCart={removeFromCart}
             api={api}
             billingUnit={billingUnit}
             cart={cart}
+            cartShop={cartShop}
             categories={categories}
             category={category}
             changeBillingUnit={changeBillingUnit}
@@ -169,6 +207,24 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
           />
         )}
 
+        {panel === 'rewards' && (
+          <LoyaltyPanel
+            api={api}
+            user={user}
+            loyalty={loyalty}
+            products={products}
+            cart={cart}
+            days={days}
+            hours={hours}
+            billingUnit={billingUnit}
+            rewardProductId={rewardProductId}
+            redeemReward={redeemReward}
+            setRewardChoice={setRewardChoice}
+            openProductDetails={openProductDetails}
+            onBrowse={returnToBrowse}
+          />
+        )}
+
         {panel === 'verification' && (
           <CustomerVerification
             api={api}
@@ -190,32 +246,39 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
             onRentalsChange={setRequests}
             onBrowse={returnToBrowse}
             onMessages={openInbox}
+            onChat={(rental) => messageShop({ requestId: rental._id })}
+            focusRentalId={notificationRentalId}
+            onFocusConsumed={() => setNotificationRentalId(null)}
           />
         )}
-        {panel === 'requests' && <DeliveryTaskBoard api={api} role="user" />}
-        {panel === 'requests' && <DeliveryWorkspace api={api} role="user" />}
-        {panel === 'requests' && (
+        {panel === 'requests' && <DeliveryTaskBoard api={api} role="user" hideWhenEmpty />}
+        {panel === 'requests' && <DeliveryWorkspace api={api} role="user" hideWhenEmpty />}
+        {panel === 'requests' && identityProfile && identityProfile.eligible !== true && (
           <IdentityStatusCard
             identity={identityProfile}
             onOpen={openVerification}
             onAddresses={openAddresses}
           />
         )}
+        {panel === 'messages' && <ChatScreen api={api} chats={chats} onBack={returnToBrowse} />}
         {panel === 'inbox' && (
           <NotificationCenter
             api={api}
             onChange={setNotifications}
-            onNavigate={(target) =>
-              setPanel(
-                ['verification', 'addresses', 'requests'].includes(target) ? target : 'inbox',
-              )
-            }
+            onNavigate={openNotification}
           />
         )}
       </div>
 
       {cartProducts.length > 0 && (
-        <RentalCartDock cartProducts={cartProducts} days={days} subtotal={subtotal} />
+        <RentalCartDock cartProducts={cartProducts} cartShop={cartShop} days={days} subtotal={subtotal} onClear={clearCart} />
+      )}
+      {cartConflict && (
+        <CartShopDialog
+          conflict={cartConflict}
+          onKeep={() => setCartConflict(null)}
+          onStartNew={startRequestWith}
+        />
       )}
       <AccountSettingsDialog
         settings={accountSettings}
@@ -234,6 +297,7 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
         busy={busy}
         calculateDelivery={calculateDelivery}
         cartProducts={cartProducts}
+        removeFromCart={removeFromCart}
         checkout={checkout}
         couponInput={couponInput}
         couponMessage={couponMessage}
@@ -263,56 +327,67 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
         startDate={startDate}
         subtotal={subtotal}
         today={today}
+        loyalty={loyalty}
+        rewardProductId={rewardProductId}
+        setRewardChoice={setRewardChoice}
+        loyaltyDiscount={loyaltyDiscount}
+        cartShop={cartShop}
       />
-      <dialog
-        className="product-detail-dialog"
-        id="product-details"
-        onClose={() => setSelectedProduct(null)}
-      >
-        <form method="dialog" className="dialog-close">
-          <button aria-label="Close item details">Close</button>
-        </form>
-        {selectedProduct && (
-          <ProductDetailsContent
-            selectedProduct={selectedProduct}
-            productReviews={productReviews}
-            reviewsLoading={reviewsLoading}
-          >
+      {selectedProduct && (
+        <ProductPage
+          product={selectedProduct}
+          onBack={closeProductDetails}
+        >
+          {cart.includes(selectedProduct._id) ? (
+            <button
+              type="button"
+              className="checkout-submit product-detail-add product-detail-remove"
+              onClick={() => removeFromCart(selectedProduct._id)}
+            >
+              ✓ Added · Remove from request
+            </button>
+          ) : (
             <button
               type="button"
               className="checkout-submit product-detail-add"
               disabled={
                 productsLoading ||
                 selectedProduct.availabilityStatus === 'on_rental' ||
-                (Boolean(days) && !selectedProduct.available) ||
-                cart.includes(selectedProduct._id)
+                (Boolean(days) && !selectedProduct.available)
               }
               onClick={() => {
                 addToRequest(selectedProduct)
-                document.getElementById('product-details')?.close()
+                closeProductDetails()
               }}
             >
-              {cart.includes(selectedProduct._id)
-                ? 'Added to request'
-                : selectedProduct.availabilityStatus === 'on_rental'
-                  ? 'Currently on rental'
-                  : !days
-                    ? 'Choose rental dates'
-                    : selectedProduct.available
-                      ? 'Add to rental request'
-                      : 'Booked for these dates'}
+              {selectedProduct.availabilityStatus === 'on_rental'
+                ? 'Currently on rental'
+                : !days
+                  ? 'Choose rental dates'
+                  : !selectedProduct.available
+                    ? 'Booked for these dates'
+                    : cartShop && cartShop.id !== providerOf(selectedProduct)
+                      ? `From ${shopNameOf(selectedProduct)} · start a new request`
+                      : 'Add to rental request'}
             </button>
-          </ProductDetailsContent>
-        )}
-      </dialog>
-      <footer className="market-footer">
-        <a className="market-footer-brand" href="/">
-          <BrandMark className="market-logo" />
-          RentEase
-        </a>
-        <p>Useful things, shared by your community.</p>
-        <small>© {new Date().getFullYear()} RentEase</small>
-      </footer>
+          )}
+          <p className="product-shop-rule">
+            One request = one shop. Items from {shopNameOf(selectedProduct)} are picked up together or
+            delivered by one rider.
+          </p>
+          {/* Listings RentEase runs itself have no shop name and no shop to message. */}
+          {selectedProduct.providerId?.shopName && (
+            <button
+              type="button"
+              className="product-message-shop"
+              onClick={() => messageShop({ productId: selectedProduct._id })}
+            >
+              <UiIcon name="chat" size={18} />
+              Message {shopNameOf(selectedProduct)}
+            </button>
+          )}
+        </ProductPage>
+      )}
       {signingOut && (
         <div className="signout-scene re-signout" role="status" aria-label="Signing out">
           <div className="re-signout-card">
@@ -326,6 +401,8 @@ function CustomerPage({ user, token, onLogout, onAccountUpdate }) {
         </div>
       )}
     </main>
+    <SiteFooter authenticated onNavigate={(view) => { setPanel(view); window.scrollTo({ top: 0, behavior: 'instant' }) }} onBrowse={() => { returnToBrowse(); window.scrollTo({ top: 0, behavior: 'instant' }) }} />
+    </>
   )
 }
 

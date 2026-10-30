@@ -21,3 +21,11 @@ export async function priceCoupon(codeValue, subtotal) {
   discountAmount = Math.min(subtotal, Math.round(discountAmount))
   return { coupon, discountAmount }
 }
+
+// A cancelled or fully declined booking gives its coupon use back, so limited coupons are not
+// used up by bookings that never happened.
+export async function releaseCoupon(codeValue, session) {
+  const code = typeof codeValue === 'string' ? codeValue.trim().toUpperCase() : ''
+  if (!code) return
+  await Coupon.updateOne({ code, redemptionCount: { $gt: 0 } }, { $inc: { redemptionCount: -1 } }, { session })
+}

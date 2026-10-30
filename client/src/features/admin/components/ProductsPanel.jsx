@@ -2,12 +2,13 @@ import { ProductRow } from './ProductRow.jsx'
 import { Empty } from './Empty.jsx'
 
 export default function ProductsPanel({
-  api,
+  busy,
+  deleteProduct,
   exportCsv,
+  holdProduct,
   productSearch,
   productStatus,
   products,
-  runAction,
   setEditingProduct,
   setProductSearch,
   setProductStatus,
@@ -35,7 +36,7 @@ export default function ProductsPanel({
                   item.category,
                   item.dailyRate,
                   item.location,
-                  item.active ? 'Active' : 'Inactive',
+                  item.active ? 'Active' : 'On hold',
                 ]),
               ])
             }
@@ -57,7 +58,7 @@ export default function ProductsPanel({
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="inactive">On hold</option>
           </select>
         </div>
         {visibleProducts.length ? (
@@ -65,18 +66,11 @@ export default function ProductsPanel({
             {visibleProducts.map((product) => (
               <ProductRow
                 key={product._id}
+                busy={busy}
                 product={product}
                 onEdit={() => setEditingProduct(product)}
-                onToggle={() =>
-                  runAction(
-                    () =>
-                      api(`/api/admin/products/${product._id}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify({ active: !product.active }),
-                      }),
-                    product.active ? 'Listing deactivated.' : 'Listing activated.',
-                  )
-                }
+                onToggle={() => holdProduct(product)}
+                onDelete={() => deleteProduct(product)}
               />
             ))}
           </div>

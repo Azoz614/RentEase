@@ -24,7 +24,7 @@
   margin: 4px 0 24px;
 }
 .handover-eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   font-weight: 800;
   color: var(--re-muted);
@@ -36,7 +36,7 @@
   font-weight: 750;
 }
 .handover-intro p {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   color: var(--hv-muted);
   margin: 0;
@@ -45,7 +45,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
   background: #edf7f1;
   border: 1px solid #d2e7db;
@@ -73,7 +73,7 @@
   justify-content: space-between;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--hv-muted);
 }
 .handover-stats svg {
@@ -87,7 +87,7 @@
   margin: 12px 0 6px;
 }
 .handover-stats small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .handover-list {
@@ -110,7 +110,7 @@
   letter-spacing: -0.3px;
 }
 .handover-list-heading h3 span {
-  font-size: 10px;
+  font-size: 12px;
   margin-left: 6px;
   border-radius: 6px;
   background: #edf3f8;
@@ -118,7 +118,7 @@
   color: var(--re-muted);
 }
 .handover-list-heading p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--hv-muted);
   margin: 7px 0 0;
 }
@@ -152,14 +152,14 @@
   outline: none;
   padding: 12px 0;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--hv-ink);
 }
 .handover-filter {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--hv-muted);
 }
 .handover-filter select {
@@ -169,7 +169,7 @@
   color: var(--hv-ink);
   padding: 0 32px 0 11px;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .handover-table-wrap {
   overflow-x: auto;
@@ -184,7 +184,7 @@
   background: #f7f9fb;
   border-top: 1px solid #e9eef3;
   border-bottom: 1px solid #e9eef3;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.04em;
   color: var(--re-muted);
   font-weight: 650;
@@ -194,7 +194,7 @@
 .handover-table td {
   padding: 18px 20px;
   border-bottom: 1px solid #edf1f5;
-  font-size: 12px;
+  font-size: 13px;
   vertical-align: middle;
 }
 .handover-table tr:last-child td {
@@ -211,14 +211,14 @@
   display: block;
 }
 .handover-table td b {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   max-width: 230px;
   line-height: 1.6;
 }
 .handover-table td small {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: var(--re-muted);
 }
@@ -228,7 +228,7 @@
   border: 0;
   background: none;
   color: var(--re-ink);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -296,7 +296,7 @@
   background: none;
   color: var(--re-muted);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 9px;
 }
 .handover-row-actions .handover-button {
@@ -305,7 +305,7 @@
 }
 .handover-waiting {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--re-muted);
   max-width: 140px;
@@ -318,7 +318,7 @@
   border-radius: 99px;
   background: #f1f4f7;
   color: #637586;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
   padding: 6px 9px;
@@ -370,7 +370,7 @@
   margin: 12px 0 8px;
 }
 .handover-empty p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--hv-muted);
   line-height: 1.7;
   margin-bottom: 20px;
@@ -384,7 +384,7 @@
   padding: 14px 24px;
 }
 .handover-pagination small {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
 }
 .handover-pagination > div {
@@ -392,7 +392,7 @@
   gap: 6px;
 }
 .handover-pagination button {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
   border: 1px solid #e0e7ed;
   padding: 7px 10px;
@@ -497,7 +497,7 @@
 }
 .handover-otp-description {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   margin: 0 0 20px;
 }
@@ -518,13 +518,13 @@
   color: var(--re-muted);
 }
 .handover-otp-order b {
-  font-size: 12px;
+  font-size: 13px;
   display: block;
   color: var(--re-ink);
 }
 .handover-otp-order small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 5px;
   color: var(--re-muted);
 }
@@ -535,7 +535,7 @@
   min-width: 0;
 }
 .handover-code-fieldset legend {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 650;
   margin: 0 auto 12px;
   color: var(--re-muted);
@@ -581,7 +581,7 @@
   justify-content: center;
   gap: 5px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   margin: 13px 0 22px;
   font-variant-numeric: tabular-nums;
 }
@@ -589,7 +589,7 @@
 .handover-cancel {
   width: 100%;
   min-height: 43px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .handover-cancel {
   margin-top: 9px;
@@ -600,7 +600,7 @@
   align-items: center;
   gap: 7px;
   margin-top: 22px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
 }
 .handover-resend button {
@@ -610,7 +610,7 @@
   color: var(--re-ink);
   font-weight: 750;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .handover-resend button:disabled {
   color: var(--re-muted);
@@ -625,14 +625,14 @@
   border-top: 1px solid #e8edf1;
   padding-top: 18px;
   margin: 22px 0 0;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .handover-feedback {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   padding: 11px 13px;
   border-radius: 8px;
@@ -646,7 +646,7 @@
 .handover-otp-modal .handover-feedback {
   margin: 12px 0;
   text-align: left;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .handover-feedback button {
   border: 0;
@@ -685,7 +685,7 @@
   animation: handover-check-stroke 0.4s 0.15s ease forwards;
 }
 .handover-success p {
-  font-size: 13px;
+  font-size: 14px;
   color: #6e8292;
   line-height: 1.7;
   margin: 10px 0 28px;
@@ -709,7 +709,7 @@
   background: #fff;
   box-shadow: 0 12px 36px #16382d20;
   color: var(--re-ink);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   animation: handover-rise 0.25s ease;
 }
@@ -793,18 +793,18 @@
   display: block;
 }
 .handover-progress b {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
 }
 .handover-progress small {
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.6;
   margin: 6px auto 0;
   max-width: 105px;
   color: var(--re-muted);
 }
 .handover-details h3 {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
   letter-spacing: 0.02em;
   font-weight: 700;
@@ -817,10 +817,10 @@
   margin-bottom: 23px;
 }
 .handover-details-grid section > b {
-  font-size: 13px;
+  font-size: 14px;
 }
 .handover-details-grid p {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--re-muted);
   margin: 6px 0 0;
@@ -837,12 +837,12 @@
   gap: 15px;
   padding: 12px 0;
   border-top: 1px solid #edf1f4;
-  font-size: 12px;
+  font-size: 13px;
 }
 .handover-detail-items small {
   display: block;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 5px;
   text-transform: capitalize;
 }
@@ -882,20 +882,20 @@
   left: 3px;
 }
 .handover-history b {
-  font-size: 12px;
+  font-size: 13px;
 }
 .handover-history p {
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.7;
   color: var(--re-muted);
   margin: 5px 0;
 }
 .handover-history small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .handover-history > p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-muted);
 }
 .handover-modal-actions {
@@ -996,10 +996,10 @@
     padding: 14px;
   }
   .handover-stats article > div {
-    font-size: 10px;
+    font-size: 12px;
   }
   .handover-stats small {
-    font-size: 9px;
+    font-size: 11px;
     line-height: 1.6;
     display: block;
   }
@@ -1049,7 +1049,7 @@
     min-width: 0;
   }
   .handover-table td small {
-    font-size: 10px;
+    font-size: 12px;
     overflow-wrap: anywhere;
   }
   .handover-table .handover-row-actions {
@@ -1088,11 +1088,11 @@
     font-size: 22px;
   }
   .handover-progress small {
-    font-size: 8px;
+    font-size: 10.5px;
     max-width: 75px;
   }
   .handover-progress b {
-    font-size: 10px;
+    font-size: 12px;
   }
   .handover-details-grid {
     gap: 13px;
@@ -1115,7 +1115,7 @@
     flex-wrap: wrap;
   }
   .handover-security {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 .handover-modal.is-closing {
@@ -1152,7 +1152,7 @@
   max-width: 190px;
   margin-top: 7px;
   color: var(--re-ink);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .handover-inspection-label {
@@ -1160,7 +1160,7 @@
   gap: 10px;
   margin: 20px 0;
   color: var(--re-ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 .handover-inspection-label textarea {
   min-height: 100px;
@@ -1169,4 +1169,126 @@
   border-radius: 12px;
   font: inherit;
   resize: vertical;
+}
+.handover-item-photo { width: 60px; height: 60px; object-fit: cover; border-radius: 12px; margin-right: 12px; }
+.handover-details .dispatch-board { margin: 20px 0; }
+.handover-details .dispatch-trip { padding: 18px; }
+.handover-workspace, .handover-modal { --hv-ink: var(--re-ink); --hv-muted: var(--re-muted); --hv-line: var(--re-line); --hv-blue: var(--re-primary); }
+.handover-workspace .handover-intro { padding: 24px 26px; border: 1px solid #dce7df; background: #edf5ef; border-radius: 17px; }
+.handover-workspace .handover-intro h2 { font-size: 29px; }
+.handover-workspace .handover-stats article { border-radius: 14px; box-shadow: none; border-color: var(--re-line); }
+.handover-workspace .handover-stats strong { font-size: 29px; color: var(--re-ink); }
+.handover-workspace .handover-list { border-radius: 16px; border-color: var(--re-line); }
+.handover-details { width: min(1040px, calc(100vw - 32px)); background: #f5f8f5; }
+.handover-details > div { padding: 28px; }
+.handover-details .handover-modal-heading { padding-bottom: 20px; border-bottom: 1px solid #dfe8e1; margin-bottom: 24px; }
+.handover-details .handover-details-grid { gap: 16px; }
+.handover-details .handover-details-grid > section { border: 1px solid #e0e9e2; border-radius: 13px; padding: 20px; background: white; }
+.handover-details .handover-details-grid h3 { color: var(--re-muted); font-size: 12.5px; }
+.handover-details .handover-details-grid b { font-size: 15px; }
+.handover-details .handover-progress { background: white; padding: 23px 14px; border: 1px solid #dfe8e1; border-radius: 15px; }
+.handover-details .handover-progress li.complete > span { color: white; background: var(--re-primary); border-color: var(--re-primary); }
+.handover-details .handover-progress b { font-size: 13px; }
+.handover-details .handover-progress small { font-size: 12px; }
+.handover-details .handover-detail-items, .handover-details .handover-history { background: white; padding: 22px; border: 1px solid #dfe8e1; border-radius: 14px; margin-bottom: 22px; }
+.handover-details .handover-detail-items h3, .handover-details .handover-history h3 { font-size: 16px; color: var(--re-ink); margin-bottom: 18px; }
+.handover-details .handover-detail-items > div { align-items: center; gap: 15px; }
+.handover-details .handover-detail-items > div > span { flex: 1; font-weight: 650; }
+.handover-details .handover-item-photo { width: 70px; height: 70px; margin: 0; border-radius: 12px; }
+.handover-details .handover-verifier { padding: 0; border: 0; background: transparent; }
+.handover-details .handover-modal-actions { position: sticky; bottom: -28px; background: #fffffff5; border-top: 1px solid #dfe8e1; padding: 18px 0; margin-bottom: -28px; }
+.handover-otp-modal .handover-mail-icon { background: #edf7f1; border-color: #d4e7db; color: var(--re-primary); }
+.handover-otp-modal .handover-code-inputs input:focus { border-color: var(--re-primary); box-shadow: 0 0 0 4px #dff0e7; }
+.handover-otp-modal .handover-otp-order { background: #f3f8f4; border-color: #e0e9e2; }
+@media (max-width: 640px) {
+  .handover-workspace .handover-intro { padding: 20px; }
+  .handover-workspace .handover-intro h2 { font-size: 25px; }
+  .handover-details { width: calc(100vw - 16px); max-height: 95dvh; }
+  .handover-details > div { padding: 18px; }
+  .handover-details .handover-details-grid { grid-template-columns: 1fr; gap: 12px; }
+  .handover-details .handover-modal-actions { bottom: -18px; margin-bottom: -18px; }
+}
+
+/* Deposit settlement */
+.deposit-settlement {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--re-line);
+  border-radius: 14px;
+  background: var(--re-surface);
+}
+.deposit-settlement h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.deposit-settlement dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.deposit-settlement dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.deposit-settlement dt {
+  color: var(--re-muted);
+}
+.deposit-settlement dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.deposit-settlement .deposit-remaining {
+  padding-top: 8px;
+  border-top: 1px solid var(--re-line);
+  font-weight: 650;
+}
+.deposit-settlement .deposit-remaining dt {
+  color: var(--re-ink);
+}
+.deposit-fee-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.deposit-fee-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--re-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.deposit-fee-form :is(input, select) {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--re-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--re-ink);
+  font-size: 14px;
+}
+.deposit-fee-form .deposit-fee-note {
+  grid-column: 1 / -1;
+}
+.deposit-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.deposit-confirm p,
+.deposit-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--re-muted);
+  font-size: 14px;
+}
+@media (max-width: 520px) {
+  .deposit-fee-form {
+    grid-template-columns: 1fr;
+  }
 }

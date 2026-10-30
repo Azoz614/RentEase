@@ -24,21 +24,26 @@ export async function verifyAccountChange(req, purpose) {
 }
 
 export async function consumeAccountOtp(userId, purpose, otp, targetEmail = '') {
-  const record = await AccountOtp.findOne({ userId, purpose, targetEmail })
-  if (!record || record.expiresAt <= new Date())
+  // Spend the attempt atomically before comparing, so parallel guesses cannot exceed the limit.
+  const record = await AccountOtp.findOneAndUpdate(
+    { userId, purpose, targetEmail, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } },
+    { $inc: { attempts: 1 } },
+    { returnDocument: 'after' },
+  )
+  if (!record) {
+    const existing = await AccountOtp.findOne({ userId, purpose, targetEmail }).select('expiresAt')
+    if (existing && existing.expiresAt > new Date())
+      throw Object.assign(new Error('Too many incorrect codes. Request a new verification code.'), {
+        status: 429,
+      })
     throw Object.assign(new Error('Your verification code has expired. Request a new one.'), {
       status: 400,
     })
-  if (record.attempts >= 5)
-    throw Object.assign(new Error('Too many incorrect codes. Request a new verification code.'), {
-      status: 429,
-    })
+  }
   const expected = Buffer.from(record.otpHash, 'hex')
   const submitted = Buffer.from(hashAccountOtp(userId, purpose, otp, targetEmail), 'hex')
-  if (expected.length !== submitted.length || !timingSafeEqual(expected, submitted)) {
-    record.attempts += 1
-    await record.save()
+  if (expected.length !== submitted.length || !timingSafeEqual(expected, submitted))
     throw Object.assign(new Error('That verification code is incorrect.'), { status: 400 })
-  }
-  await record.deleteOne()
+  if (!(await AccountOtp.deleteOne({ _id: record._id })).deletedCount)
+    throw Object.assign(new Error('This code was already used. Request a new one.'), { status: 400 })
 }

@@ -117,7 +117,8 @@ test('notifications support read/unread changes and navigate to the relevant ver
   render(React.createElement(Notifications, { api, onNavigate: (value) => { destination = value } }))
   await user.click(await screen.findByRole('button', { name: 'Mark read' }))
   assert.ok(await screen.findByRole('button', { name: 'Mark unread' }))
-  await user.click(screen.getByRole('button', { name: 'View update' }))
+  await user.click(screen.getByRole('button', { name: 'Identity Verification Approved' }))
+  await user.click(await screen.findByRole('button', { name: /Open verification/ }))
   assert.equal(destination, 'verification')
 })
 

@@ -55,7 +55,7 @@
   align-self: end;
   margin: 0 0 4px 2px;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.14em;
 }
@@ -87,13 +87,13 @@
 }
 .business-shop-card b {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .business-shop-card small {
   color: var(--wb-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .business-shop-card i {
   margin-left: auto;
@@ -101,7 +101,7 @@
   border-radius: 12px;
   background: #eaf4ee;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-style: normal;
   font-weight: 800;
 }
@@ -144,7 +144,7 @@
   background: #315f82;
   color: #fff;
   text-align: center;
-  font-size: 9px;
+  font-size: 11px;
 }
 .business-sidebar-foot {
   margin-top: auto;
@@ -157,7 +157,7 @@
   gap: 7px;
   margin-bottom: 12px;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .business-sidebar-foot button {
   width: 100%;
@@ -193,7 +193,7 @@
 }
 .business-topbar > div:first-child > small {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -224,7 +224,7 @@
   border-radius: 8px;
   background: white;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .business-avatar-small {
   width: 34px;
@@ -234,7 +234,7 @@
   border-radius: 50%;
   background: #315f82;
   color: #fff;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 .business-welcome,
@@ -254,7 +254,7 @@
 }
 .workspace-kicker {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.15em;
 }
@@ -274,7 +274,7 @@
   max-width: 580px;
   margin: 0;
   color: #e0e8ee;
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.65;
 }
 .owner-primary {
@@ -321,7 +321,7 @@
   border-radius: 10px;
   background: #eaf0f5;
   color: var(--re-ink);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 850;
 }
 .business-stat-icon.amber {
@@ -335,11 +335,11 @@
 .business-stat-icon.violet {
   background: #f0edf8;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .business-stat-grid small {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .business-stat-grid article > b {
   margin: 7px 0 2px;
@@ -348,7 +348,7 @@
 }
 .business-stat-grid article > em {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-style: normal;
 }
 .business-overview-grid {
@@ -378,7 +378,7 @@
 .workspace-card-head p {
   margin: 5px 0 0;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .workspace-card-head > button:not(.owner-primary) {
   padding: 6px 0;
@@ -395,7 +395,7 @@
   border-radius: 9px;
   color: var(--re-muted);
   text-align: center;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .owner-booking-row {
   padding: 13px 0;
@@ -412,7 +412,7 @@
   flex-wrap: wrap;
   gap: 4px;
   color: var(--re-ink);
-  font-size: 9px;
+  font-size: 11px;
 }
 .owner-booking-date span {
   color: var(--re-muted);
@@ -423,7 +423,7 @@
 .owner-booking-copy h3 {
   overflow: hidden;
   margin: 0;
-  font-size: 11px;
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -431,7 +431,7 @@
   overflow: hidden;
   margin: 4px 0 0;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -440,7 +440,7 @@
   border-radius: 12px;
   background: #fff4df;
   color: #a27627;
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -463,11 +463,11 @@
   gap: 4px;
 }
 .owner-booking-item > span > b {
-  font-size: 9px;
+  font-size: 11px;
 }
 .owner-booking-item > span > small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .owner-booking-item > div {
   display: flex;
@@ -488,8 +488,22 @@
   background: #fff;
   color: #677680;
 }
+.owner-message {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--re-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.owner-message:hover {
+  text-decoration: underline;
+}
 .owner-booking-item > em {
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 800;
 }
@@ -520,13 +534,13 @@
 }
 .owner-product-mini > div b {
   overflow: hidden;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .owner-product-mini > div small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .owner-product-mini > span {
   margin-left: auto;
@@ -537,7 +551,7 @@
   border-radius: 12px;
   background: #eaf4ee;
   color: #43825a;
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -557,17 +571,17 @@
 }
 .workspace-roadmap > span {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 850;
   letter-spacing: 0.13em;
 }
 .workspace-roadmap > div b {
-  font-size: 9px;
+  font-size: 11px;
 }
 .workspace-roadmap > div p {
   margin: 5px 0 0;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .workspace-alert {
@@ -577,7 +591,7 @@
   border-radius: 8px;
   background: #edf7f0;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .workspace-alert.is-error {
   border-color: #f0d7d3;
@@ -613,7 +627,7 @@
 .inventory-toolbar span,
 .booking-count {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .owner-inventory-grid {
   display: grid;
@@ -646,7 +660,7 @@
 }
 .owner-inventory-info > small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 800;
 }
 .owner-inventory-info h3 {
@@ -660,7 +674,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .owner-inventory-info > div {
@@ -670,11 +684,11 @@
   margin: 12px 0 10px;
 }
 .owner-inventory-info > div > b {
-  font-size: 12px;
+  font-size: 13px;
 }
 .owner-inventory-info > div > span {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .owner-inventory-info .owner-deposit {
   margin-left: auto;
@@ -694,6 +708,106 @@
   gap: 13px;
   max-width: 740px;
 }
+/* Add-listing dialog: pick Vehicle or Asset, then fill in the details. */
+.handover-modal.owner-add-listing {
+  width: min(720px, calc(100vw - 28px));
+}
+.owner-add-listing-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.owner-add-listing-head h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+.owner-add-listing-close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--wb-line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--re-ink);
+  cursor: pointer;
+}
+.owner-type-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.owner-type-picker button {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 170px;
+  padding: 20px;
+  border: 1px solid var(--wb-line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--re-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+.owner-type-picker button:hover {
+  border-color: var(--re-primary);
+  box-shadow: 0 8px 20px #183b2b12;
+  transform: translateY(-1px);
+}
+.owner-type-picker span {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--re-soft);
+  color: var(--re-primary);
+}
+.owner-type-picker b {
+  font-size: 15px;
+}
+.owner-type-picker small {
+  color: var(--re-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.owner-change-type {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--re-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.owner-add-listing-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fbeceb;
+  color: var(--re-danger);
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .owner-type-picker,
+  .owner-add-listing .owner-form-two {
+    grid-template-columns: 1fr;
+  }
+  .owner-type-picker button {
+    min-height: 0;
+  }
+}
 .owner-form-two {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -703,12 +817,12 @@
   display: grid;
   gap: 6px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .owner-listing-form label small {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
 }
 .owner-listing-form input,
@@ -750,7 +864,7 @@
   border-radius: 7px;
   background: #f1f5f7;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .inventory-card + .workspace-card {
   margin-top: 15px;
@@ -759,7 +873,7 @@
   padding: 5px 7px;
   background: #eaf4ee;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-style: normal;
   font-weight: 800;
 }
@@ -813,7 +927,7 @@
 }
 .driver-job-code {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 850;
   letter-spacing: 0.12em;
 }
@@ -821,11 +935,11 @@
   display: grid;
   gap: 4px;
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .driver-request-head h3 small {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
 }
 .driver-delivery-type {
@@ -833,7 +947,7 @@
   border-radius: 12px;
   background: #eaf0f5;
   color: var(--re-ink);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 800;
 }
 .driver-address {
@@ -860,14 +974,14 @@
   letter-spacing: 0.11em;
 }
 .driver-address b {
-  font-size: 10px;
+  font-size: 12px;
 }
 .driver-route-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 15px;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .driver-route-meta b {
   margin-left: auto;
@@ -902,13 +1016,13 @@
 }
 .driver-item-info b {
   overflow: hidden;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .driver-item-info small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .driver-progress {
   display: flex;
@@ -927,7 +1041,7 @@
   display: block;
   margin-top: 5px;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .driver-next {
   padding: 8px 9px;
@@ -943,7 +1057,7 @@
 }
 .driver-finished {
   color: #43825a;
-  font-size: 9px;
+  font-size: 11px;
 }
 .driver-notification {
   display: flex;
@@ -961,17 +1075,17 @@
   color: var(--re-ink);
 }
 .driver-notification > div b {
-  font-size: 10px;
+  font-size: 12px;
 }
 .driver-notification > div p {
   margin: 4px 0;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .driver-notification > div small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 @media (max-width: 1100px) {
   .business-shell {
@@ -1026,7 +1140,7 @@
     min-width: max-content;
     min-height: 38px;
     padding: 0 10px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .business-menu button > span {
     font-size: 14px;
@@ -1045,7 +1159,7 @@
   .business-sidebar-foot button {
     width: auto;
     padding: 8px 9px;
-    font-size: 9px;
+    font-size: 11px;
   }
   .business-main {
     padding: 0 14px 35px;
@@ -1079,12 +1193,12 @@
   .business-welcome p,
   .driver-welcome p {
     max-width: 75%;
-    font-size: 10px;
+    font-size: 12px;
   }
   .business-welcome > .owner-primary {
     max-width: 100px;
     padding: 0 9px;
-    font-size: 9px;
+    font-size: 11px;
   }
   .business-stat-grid,
   .driver-stat-grid {
@@ -1138,7 +1252,7 @@
     padding: 9px;
   }
   .owner-inventory-info h3 {
-    font-size: 12px;
+    font-size: 13px;
   }
   .owner-inventory-info .owner-deposit {
     margin-left: 0;
@@ -1177,7 +1291,7 @@
     padding: 12px;
   }
   .driver-request-head h3 {
-    font-size: 11px;
+    font-size: 12.5px;
   }
 }
 @media (max-width: 390px) {
@@ -1205,7 +1319,7 @@
   margin: 7px 0 0;
   padding-left: 13px;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .business-menu button,
 .business-sidebar-foot button,
@@ -1217,31 +1331,31 @@
   font-family: inherit;
 }
 .business-menu button {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .business-sidebar-foot button {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 .owner-primary {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 750;
 }
 .workspace-card-head > button:not(.owner-primary) {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 .owner-booking-item button {
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 .owner-inventory-info > button {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 .driver-next {
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 750;
 }
 .inventory-toolbar input,
@@ -1249,7 +1363,7 @@
 .owner-listing-form select,
 .owner-listing-form textarea {
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .owner-calendar {
   margin-top: 23px;
@@ -1263,7 +1377,7 @@
   background: #fff;
   color: var(--re-muted);
   font: inherit;
-  font-size: 10px;
+  font-size: 12px;
 }
 .calendar-toolbar {
   display: flex;
@@ -1276,7 +1390,7 @@
   min-width: 145px;
   color: var(--re-ink);
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
 }
 .calendar-toolbar button {
   width: 31px;
@@ -1299,7 +1413,7 @@
   border-bottom: 1px solid #e8edef;
   color: var(--re-muted);
   text-align: center;
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .calendar-day {
   min-height: 94px;
@@ -1312,7 +1426,7 @@
   background: #fff;
 }
 .calendar-day > b {
-  font-size: 9px;
+  font-size: 11px;
 }
 .calendar-day.outside {
   background: #f7f9fa;
@@ -1345,7 +1459,7 @@
   gap: 17px;
   margin-top: 12px;
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
 }
 .calendar-legend span {
   display: flex;
@@ -1378,7 +1492,7 @@
     font-size: 0;
   }
   .calendar-legend {
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .owner-calendar .workspace-card-head {
     flex-direction: column;
@@ -1387,4 +1501,9 @@
     max-width: none;
     width: 100%;
   }
+}
+/* The banner only carries a name and one action, so it no longer needs a tall hero height. */
+.business-welcome {
+  min-height: 0;
+  padding: 20px 26px;
 }

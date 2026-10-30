@@ -26,6 +26,12 @@ export function UiIcon({ name = 'box', size = 20, ...props }) {
       </>
     ),
     plus: <path d="M12 5v14M5 12h14" />,
+    chat: (
+      <>
+        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12Z" />
+        <path d="M8.5 12h.01M12 12h.01M15.5 12h.01" />
+      </>
+    ),
     orders: (
       <>
         <rect x="5" y="4" width="14" height="17" rx="2" />
@@ -134,6 +140,18 @@ export function UiIcon({ name = 'box', size = 20, ...props }) {
         <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" />
       </>
     ),
+    eye: (
+      <>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+        <circle cx="12" cy="12" r="3" />
+      </>
+    ),
+    eyeOff: (
+      <>
+        <path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6" />
+        <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" />
+      </>
+    ),
     phone: <path d="m7 3 3 5-3 3a15 15 0 0 0 6 6l3-3 5 3-1 4C10 22 2 14 3 4Z" />,
     upload: (
       <>
@@ -146,6 +164,7 @@ export function UiIcon({ name = 'box', size = 20, ...props }) {
       </>
     ),
     heart: <path d="M20 5c-3-3-7-1-8 1C9 1 2 3 3 9c0 5 9 11 9 11s9-6 9-11c0-2 0-3-1-4Z" />,
+    star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
   }
   return (
     <svg

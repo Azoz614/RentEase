@@ -1,0 +1,66 @@
+name: CI
+
+# Runs on pull requests, and is called by deploy.yml before every deployment.
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: 24
+  WRANGLER_SEND_METRICS: false
+
+jobs:
+  client:
+    name: Web app (lint, test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Validate web Worker bundle and config
+        run: npx wrangler deploy --dry-run --env production --outdir "$RUNNER_TEMP/web-worker"
+
+  server:
+    name: API (unit tests, Workers runtime smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      # mongodb-memory-server downloads a MongoDB binary for the replica-set tests.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+      - run: npm test
+      - name: Validate API Worker bundle and config
+        run: npx wrangler deploy --dry-run --env production --outdir "$RUNNER_TEMP/api-worker"
+      - name: Smoke test on the Workers runtime (wrangler dev + MongoDB replica set)
+        run: npm run test:worker

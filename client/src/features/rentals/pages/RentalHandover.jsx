@@ -7,7 +7,6 @@ import { Status } from '../components/Status.jsx'
 import { RentalAction } from '../components/RentalAction.jsx'
 import { RentalDetails } from '../components/RentalDetails.jsx'
 import { LifecycleConfirmation } from '../components/LifecycleConfirmation.jsx'
-import { ConfirmHandover } from '../components/ConfirmHandover.jsx'
 import { VerificationModal } from '../components/VerificationModal.jsx'
 import { useCallback, useEffect, useState } from 'react'
 import '../styles/rental-handover.css'
@@ -29,7 +28,7 @@ export default function RentalHandover({ token, refreshKey = 0 }) {
   useDeliveryRefresh(refreshDelivery)
   const request = useCallback(
     async (path, options = {}) => {
-      const response = await fetch(`/api/admin${path}`, {
+      const response = await fetch(path.startsWith('/api/') ? path : `/api/admin${path}`, {
         ...options,
         headers: {
           Authorization: `Bearer ${token}`,
@@ -337,7 +336,7 @@ export default function RentalHandover({ token, refreshKey = 0 }) {
           onVerify={setVerification}
         />
       )}
-      {verification && ['ready', 'receipt', 'complete'].includes(verification.type) && (
+      {verification && ['ready', 'complete'].includes(verification.type) && (
         <LifecycleConfirmation
           rental={verification.rental}
           type={verification.type}
@@ -349,19 +348,8 @@ export default function RentalHandover({ token, refreshKey = 0 }) {
           }}
         />
       )}
-      {verification?.type === 'handover' && (
-        <ConfirmHandover
-          rental={verification.rental}
-          request={request}
-          onClose={() => setVerification(null)}
-          onConfirmed={async (message) => {
-            await verified(message)
-            setVerification(null)
-          }}
-        />
-      )}
       {verification &&
-        !['handover', 'ready', 'receipt', 'complete'].includes(verification.type) && (
+        !['ready', 'complete'].includes(verification.type) && (
           <VerificationModal
             rental={verification.rental}
             type={verification.type}

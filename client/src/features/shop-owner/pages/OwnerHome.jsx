@@ -2,8 +2,10 @@ import DeliveryTaskBoard from '../../delivery-partner/components/DeliveryTaskBoa
 import RentalHandover from '../../rentals/pages/RentalHandover.jsx'
 import ShopOverview from '../components/ShopOverview.jsx'
 import ShopInventory from '../components/ShopInventory.jsx'
-import CreateListingForm from '../components/CreateListingForm.jsx'
+import AddListingDialog from '../components/AddListingDialog.jsx'
 import ShopBookings from '../components/ShopBookings.jsx'
+import ShopReviews from '../components/ShopReviews.jsx'
+import EditListingPhotos from '../components/EditListingPhotos.jsx'
 
 import AvailabilityCalendar from '../components/AvailabilityCalendar.jsx'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -15,10 +17,23 @@ import { ShopLocation } from '../../maps/components/ShopLocation.jsx'
 import { DeliveryWorkspace } from '../../maps/components/DeliveryWorkspace.jsx'
 import RentalDecisionDialog from '../../rentals/components/RentalDecisionDialog.jsx'
 import useProviderRequests from '../../rentals/hooks/useProviderRequests.js'
+import NotificationBell from '../../notifications/components/NotificationBell.jsx'
+import NotificationCenter from '../../notifications/pages/NotificationCenter.jsx'
+import CommissionPanel from '../../payments/components/CommissionPanel.jsx'
+import { useNotificationCount } from '../../notifications/hooks/useNotificationCount.js'
+import WorkspaceAccountMenu from '../../../components/account/WorkspaceAccountMenu.jsx'
+import ChatPanel from '../../chat/components/ChatPanel.jsx'
+import WorkspaceFooter from '../../../components/layout/WorkspaceFooter.jsx'
+import useConversations from '../../chat/hooks/useConversations.js'
 
-export default function OwnerHome({ user, api, token, onLogout }) {
+// Review notifications open the reviews page; everything else concerns a booking.
+const notificationSection = (row) => (/review/i.test(row?.title || '') ? 'reviews' : 'bookings')
+
+export default function OwnerHome({ user, api, token, onLogout, onAccountUpdate }) {
+  const unread = useNotificationCount(api)
+  const chats = useConversations(api)
   const [section, setSection] = useState('overview')
-  const [declineTarget, setDeclineTarget] = useState(null)
+  const [decisionTarget, setDecisionTarget] = useState(null)
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
   const [calendarProduct, setCalendarProduct] = useState('all')
   const [products, setProducts] = useState([])
@@ -29,6 +44,9 @@ export default function OwnerHome({ user, api, token, onLogout }) {
     refresh: refreshRequests,
   } = useProviderRequests(api)
   const [photos, setPhotos] = useState([])
+  const [photoProduct, setPhotoProduct] = useState(null)
+  const [addListingOpen, setAddListingOpen] = useState(false)
+  const [addListingError, setAddListingError] = useState('')
 
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
@@ -70,70 +88,82 @@ export default function OwnerHome({ user, api, token, onLogout }) {
   const accepted = requests.flatMap((request) =>
     request.items.filter((item) => item.decision === 'accepted'),
   )
-  const bookedValue = accepted.reduce((sum, item) => sum + Number(item.rentalAmount || 0), 0)
+  // Only paid, live bookings count as value; cancelled and unpaid ones never reach the shop.
+  const paidStatuses = ['authorized', 'paid', 'partially_refunded', 'refunded']
+  const bookedValue = requests
+    .filter((request) => request.status !== 'cancelled' && paidStatuses.includes(request.payment?.status))
+    .flatMap((request) => request.items.filter((item) => item.decision === 'accepted'))
+    .reduce((sum, item) => sum + Number(item.rentalAmount || 0), 0)
 
-  const submitListing = async (event) => {
+  const closeAddListing = () => {
+    setAddListingOpen(false)
+    setAddListingError('')
+    setPhotos([])
+  }
+  // Vehicle or asset details become the listing's first specifications, as on the admin form.
+  const submitListing = async (event, itemType) => {
     event.preventDefault()
     setBusy(true)
-    setError('')
+    setAddListingError('')
     setNotice('')
-    const formElement = event.currentTarget
-    const form = new FormData(formElement)
-    const specifications = String(form.get('specifications') || '')
+    const form = new FormData(event.currentTarget)
+    const vehicle = itemType === 'vehicle'
+    const details = vehicle
+      ? [
+          ['Make', form.get('make')],
+          ['Model', form.get('model')],
+          ['Registration number', form.get('registration')],
+          ['Fuel type', form.get('fuelType')],
+          ['Seats', form.get('seats')],
+        ]
+      : [
+          ['Brand / model', form.get('brandModel')],
+          ['Condition', form.get('condition')],
+          ['Asset ID', form.get('assetId')],
+        ]
+    const extra = String(form.get('specifications') || '')
       .split('\n')
       .map((line) => {
         const [name, ...parts] = line.split(':')
-        return { name: name.trim(), value: parts.join(':').trim() }
+        return [name, parts.join(':')]
       })
+    const specifications = [['Item type', vehicle ? 'Vehicle' : 'Asset'], ...details, ...extra]
+      .map(([name, value]) => ({ name: String(name || '').trim(), value: String(value || '').trim() }))
       .filter((row) => row.name && row.value)
     try {
       const result = await api('/api/owner/products', {
         method: 'POST',
         body: JSON.stringify({
           title: form.get('title'),
-          category: form.get('category'),
+          category: vehicle ? 'Vehicles' : form.get('category'),
           description: form.get('description'),
           dailyRate: Number(form.get('dailyRate')),
           hourlyRate: form.get('hourlyRate'),
           weeklyRate: form.get('weeklyRate'),
           longRentalDiscountPercent: Number(form.get('longRentalDiscountPercent') || 0),
           depositAmount: Number(form.get('depositAmount') || 0),
+          leadTimeHours: Number(form.get('leadTimeHours')),
           specifications,
           photos: photos.map((photo) => photo.data),
         }),
       })
       setNotice(result.message)
-      setPhotos([])
-      formElement.reset()
+      closeAddListing()
       await load()
       setSection('inventory')
     } catch (submitError) {
-      setError(submitError.message)
+      setAddListingError(submitError.message)
     } finally {
       setBusy(false)
     }
   }
 
-  const decide = async (requestId, productId, decision) => {
-    if (decision === 'rejected') {
-      setDeclineTarget({ requestId, productId })
-      return
-    }
-    setBusy(true)
-    setError('')
-    setNotice('')
-    try {
-      const result = await api(`/api/provider/requests/${requestId}/items/${productId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ decision }),
-      })
-      setNotice(result.message)
-      await Promise.all([load(), refreshRequests()])
-    } catch (actionError) {
-      setError(actionError.message)
-    } finally {
-      setBusy(false)
-    }
+  // Both decisions open a dialog: accepting asks for the account password, declining for a reason.
+  const decide = (requestId, productId, decision) => {
+    const title = requests
+      .find((request) => request._id === requestId)
+      ?.items.find((item) => item.productId === productId)?.title
+    setDecisionTarget({ requestId, productId, decision, title })
   }
   const toggleProduct = async (product) => {
     setBusy(true)
@@ -179,10 +209,12 @@ export default function OwnerHome({ user, api, token, onLogout }) {
             { id: 'overview', label: 'Overview' },
             { id: 'inventory', label: 'Inventory' },
             { id: 'calendar', label: 'Availability' },
-            { id: 'add', label: 'Add a listing' },
             { id: 'bookings', label: 'Bookings', badge: pending },
+            { id: 'reviews', label: 'Reviews' },
             { id: 'handovers', label: 'Self-pickup handovers' },
             { id: 'locations', label: 'Maps & delivery' },
+            { id: 'earnings', label: 'Earnings' },
+            { id: 'inbox', label: 'Notifications', badge: unread },
           ]}
           onSelect={(key) => {
             setSection(key)
@@ -201,32 +233,46 @@ export default function OwnerHome({ user, api, token, onLogout }) {
         </div>
       </aside>
       <section className="business-main">
-        <header className="business-topbar">
+        <header className="business-topbar owner-topbar">
           <div>
-            <small>OWNER WORKSPACE / {section.toUpperCase()}</small>
             <h1>
-              {section === 'overview'
-                ? 'Good business starts here.'
-                : section === 'inventory'
-                  ? 'Your inventory'
-                  : section === 'add'
-                    ? 'Create a rental listing'
-                    : section === 'locations'
-                      ? 'Shop location & deliveries'
-                      : section === 'calendar'
-                        ? 'Availability calendar'
-                        : 'Booking requests'}
+              {{
+                overview: 'Overview',
+                inventory: 'Your inventory',
+                locations: 'Shop location & deliveries',
+                calendar: 'Availability calendar',
+                bookings: 'Booking requests',
+                messages: 'Customer messages',
+                reviews: 'Customer reviews',
+                handovers: 'Self-pickup handovers',
+                earnings: 'Earnings',
+                inbox: 'Notifications',
+              }[section] || 'Overview'}
             </h1>
           </div>
           <div className="business-top-actions">
-            <span className="business-location">{user.shopName || 'Your rental shop'}</span>
+            <NotificationBell api={api} unreadCount={unread} onHistory={() => setSection('inbox')} onNavigate={(_target, row) => setSection(notificationSection(row))} />
+            <div>
+              <button
+                type="button"
+                className={`market-icon-button${section === 'messages' ? ' active' : ''}`}
+                aria-label={`Messages${chats.unread ? `, ${chats.unread} unread` : ''}`}
+                title="Messages"
+                onClick={() => setSection('messages')}
+              >
+                <UiIcon name="chat" size={20} />
+                {chats.unread > 0 && (
+                  <b className="inbox-count">{chats.unread > 99 ? '99+' : chats.unread}</b>
+                )}
+              </button>
+            </div>
             <button
               onClick={() => Promise.all([load(), refreshRequests()])}
               aria-label="Refresh workspace"
             >
               <UiIcon name="refresh" size={17} />
             </button>
-            <span className="business-avatar-small">{(user.username || 'S')[0].toUpperCase()}</span>
+            <WorkspaceAccountMenu user={user} api={api} onLogout={onLogout} onAccountUpdate={onAccountUpdate} />
           </div>
         </header>
         {error && (
@@ -249,7 +295,7 @@ export default function OwnerHome({ user, api, token, onLogout }) {
           </div>
         )}
         {['overview', 'bookings', 'locations'].includes(section) && (
-          <DeliveryTaskBoard api={api} role="rental_shop" />
+          <DeliveryTaskBoard api={api} role="rental_shop" hideWhenEmpty={section !== 'locations'} />
         )}
         {section === 'handovers' && <RentalHandover token={token} />}
         {section === 'locations' && (
@@ -268,7 +314,6 @@ export default function OwnerHome({ user, api, token, onLogout }) {
             products={products}
             requests={requests}
             setSection={setSection}
-            user={user}
           />
         )}
         {section === 'inventory' && (
@@ -276,8 +321,9 @@ export default function OwnerHome({ user, api, token, onLogout }) {
             busy={busy}
             search={search}
             setSearch={setSearch}
-            setSection={setSection}
+            onAddListing={() => setAddListingOpen(true)}
             toggleProduct={toggleProduct}
+            editPhotos={setPhotoProduct}
             visibleProducts={visibleProducts}
           />
         )}
@@ -290,24 +336,41 @@ export default function OwnerHome({ user, api, token, onLogout }) {
             setProductId={setCalendarProduct}
           />
         )}
-        {section === 'add' && (
-          <CreateListingForm
+        {section === 'bookings' && (
+          <ShopBookings
             busy={busy}
-            photos={photos}
-            setError={setError}
-            setPhotos={setPhotos}
-            submitListing={submitListing}
+            decide={decide}
+            requests={requests}
+            onChat={(request) => {
+              setSection('messages')
+              chats.startChat({ requestId: request._id })
+            }}
           />
         )}
-        {section === 'bookings' && <ShopBookings busy={busy} decide={decide} requests={requests} />}
+        {section === 'messages' && <ChatPanel api={api} chats={chats} side="shop" />}
+        {section === 'earnings' && <CommissionPanel api={api} role="rental_shop" />}
+        {section === 'reviews' && <ShopReviews api={api} />}
+        {section === 'inbox' && <NotificationCenter api={api} onNavigate={(_target, row) => setSection(notificationSection(row))} />}
       </section>
-      {declineTarget && (
+      <WorkspaceFooter />
+      {addListingOpen && (
+        <AddListingDialog
+          busy={busy}
+          error={addListingError}
+          photos={photos}
+          setPhotos={setPhotos}
+          submitListing={submitListing}
+          onClose={closeAddListing}
+        />
+      )}
+      {photoProduct && <EditListingPhotos key={photoProduct._id} product={photoProduct} api={api} onClose={() => setPhotoProduct(null)} onSaved={() => { setPhotoProduct(null); setNotice('Product photos updated.'); load() }} />}
+      {decisionTarget && (
         <RentalDecisionDialog
-          target={declineTarget}
+          target={decisionTarget}
           api={api}
-          onClose={() => setDeclineTarget(null)}
+          onClose={() => setDecisionTarget(null)}
           onDecided={async (message) => {
-            setDeclineTarget(null)
+            setDecisionTarget(null)
             setNotice(message)
             await Promise.all([load(), refreshRequests()])
           }}

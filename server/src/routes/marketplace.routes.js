@@ -9,6 +9,8 @@ import paymentRoutes from '../modules/payments/payment.routes.js'
 import rentalRoutes from '../modules/rentals/rental.routes.js'
 import ownerProductRoutes from '../modules/products/owner-product.routes.js'
 import notificationRoutes from '../modules/notifications/notification.routes.js'
+import commissionRoutes from '../modules/payments/commission.routes.mjs'
+import chatRoutes from '../modules/chat/chat.routes.js'
 
 const router = Router()
 router.use(publicCatalogRoutes)
@@ -20,6 +22,8 @@ router.use(paymentRoutes)
 router.use(rentalRoutes)
 router.use(ownerProductRoutes)
 router.use(notificationRoutes)
+router.use(commissionRoutes)
+router.use(chatRoutes)
 router.use(verificationError)
 
 export default router

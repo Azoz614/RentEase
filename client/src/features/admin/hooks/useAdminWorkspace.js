@@ -18,7 +18,7 @@ export default function useAdminWorkspace({ token }) {
   const [auditEvents, setAuditEvents] = useState([])
   const [coupons, setCoupons] = useState([])
   const [packages, setPackages] = useState([])
-  const [declineTarget, setDeclineTarget] = useState(null)
+  const [decisionTarget, setDecisionTarget] = useState(null)
   const [revenue, setRevenue] = useState({
     bookings: 0,
     rentalCollected: 0,
@@ -40,8 +40,31 @@ export default function useAdminWorkspace({ token }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [reload, setReload] = useState(0)
+  const [passwordPrompt, setPasswordPrompt] = useState(null)
 
-  const api = useMemo(() => createApiClient(token), [token])
+  // Changes under /api/admin wait for the administrator's password (AdminPasswordDialog).
+  // Callers may pass `summary` to describe the change in the dialog; it is not sent.
+  const api = useMemo(() => {
+    const request = createApiClient(token)
+    const confirmed = (url, { summary, ...options } = {}) => {
+      if (!url.startsWith('/api/admin/') || !options.method || options.method === 'GET')
+        return request(url, options)
+      return new Promise((resolve, reject) =>
+        setPasswordPrompt({
+          summary,
+          resolve,
+          reject,
+          send: (password) =>
+            request(url, {
+              ...options,
+              headers: { ...options.headers, 'X-Admin-Password': encodeURIComponent(password) },
+            }),
+        }),
+      )
+    }
+    confirmed.stream = request.stream
+    return confirmed
+  }, [token])
 
   const {
     requests: rentalRequests,
@@ -57,39 +80,28 @@ export default function useAdminWorkspace({ token }) {
 
   useEffect(() => {
     let cancelled = false
+    // Each panel loads independently: one failing request must not blank the others.
     const load = async () => {
-      try {
-        const [
-          summary,
-          userList,
-          productList,
-          shopList,
-          auditList,
-          couponList,
-          packageList,
-          revenueReport,
-        ] = await Promise.all([
-          api('/api/admin/overview'),
-          api('/api/admin/users'),
-          api('/api/admin/products'),
-          api('/api/admin/shops/pending'),
-          api('/api/admin/audit'),
-          api('/api/admin/coupons'),
-          api('/api/admin/packages'),
-          api('/api/admin/reports/revenue'),
-        ])
-        if (cancelled) return
-        setOverview(summary)
-        setUsers(userList.users)
-        setProducts(productList.products)
-        setShops(shopList.shops)
-        setAuditEvents(auditList.events || [])
-        setCoupons(couponList.coupons || [])
-        setPackages(packageList.packages || [])
-        setRevenue(revenueReport)
-      } catch (loadError) {
-        if (!cancelled) setError(loadError.message)
-      }
+      const sources = [
+        ['/api/admin/overview', setOverview],
+        ['/api/admin/users', (body) => setUsers(body.users)],
+        ['/api/admin/products', (body) => setProducts(body.products)],
+        ['/api/admin/shops/pending', (body) => setShops(body.shops)],
+        ['/api/admin/audit', (body) => setAuditEvents(body.events || [])],
+        ['/api/admin/coupons', (body) => setCoupons(body.coupons || [])],
+        ['/api/admin/packages', (body) => setPackages(body.packages || [])],
+        ['/api/admin/reports/revenue', setRevenue],
+      ]
+      const results = await Promise.allSettled(sources.map(([path]) => api(path)))
+      if (cancelled) return
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') sources[index][1](result.value)
+      })
+      const failures = results.filter((result) => result.status === 'rejected')
+      if (failures.length)
+        setError(failures.length === results.length
+          ? failures[0].reason.message
+          : 'Some dashboard sections could not load. Refresh to try again.')
     }
     load()
     return () => {
@@ -106,46 +118,9 @@ export default function useAdminWorkspace({ token }) {
       setMessage(success)
       setReload((value) => value + 1)
     } catch (actionError) {
-      setError(actionError.message)
+      if (!actionError.cancelled) setError(actionError.message)
     } finally {
       setBusy(false)
-    }
-  }
-
-  const handlePhotos = async (event) => {
-    const files = Array.from(event.target.files || [])
-    setError('')
-    if (files.length > 6) {
-      setError('Choose up to 6 photos.')
-      event.target.value = ''
-      return
-    }
-    if (
-      files.some(
-        (file) =>
-          !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-          file.size > 2.5 * 1024 * 1024,
-      )
-    ) {
-      setError('Use JPEG, PNG, or WebP photos smaller than 2.5 MB each.')
-      event.target.value = ''
-      return
-    }
-    try {
-      const encoded = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise((resolve, reject) => {
-              const reader = new FileReader()
-              reader.onload = () => resolve({ name: file.name, data: reader.result })
-              reader.onerror = reject
-              reader.readAsDataURL(file)
-            }),
-        ),
-      )
-      setPhotos(encoded)
-    } catch {
-      setError('Could not read one of those photos.')
     }
   }
 
@@ -248,10 +223,41 @@ export default function useAdminWorkspace({ token }) {
     }, 'Rental package created.')
   }
 
-  const updateUser = (id, data) =>
+  const updateUser = (id, data, summary) =>
     runAction(
-      () => api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-      'Account updated.',
+      () =>
+        api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(data), summary }),
+      data.active === false ? 'Account put on hold.' : data.active ? 'Account released from hold.' : 'Account updated.',
+    )
+  const deleteUser = (account) =>
+    runAction(
+      () =>
+        api(`/api/admin/users/${account._id}`, {
+          method: 'DELETE',
+          summary: `Permanently delete ${account.username}? This cannot be undone.`,
+        }),
+      `Account ${account.username} deleted.`,
+    )
+  const holdProduct = (product) =>
+    runAction(
+      () =>
+        api(`/api/admin/products/${product._id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ active: !product.active }),
+          summary: product.active
+            ? `Put ${product.title} on hold? Customers can no longer book it.`
+            : `Release ${product.title} from hold and list it again?`,
+        }),
+      product.active ? 'Listing put on hold.' : 'Listing released from hold.',
+    )
+  const deleteProduct = (product) =>
+    runAction(
+      () =>
+        api(`/api/admin/products/${product._id}`, {
+          method: 'DELETE',
+          summary: `Permanently delete ${product.title} and its photos? This cannot be undone.`,
+        }),
+      `${product.title} deleted.`,
     )
   const reviewShop = (id, decision) =>
     runAction(
@@ -300,7 +306,7 @@ export default function useAdminWorkspace({ token }) {
     link.click()
     URL.revokeObjectURL(url)
   }
-  const editProduct = async (event) => {
+  const editProduct = async (event, productPhotos) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     await runAction(async () => {
@@ -311,6 +317,7 @@ export default function useAdminWorkspace({ token }) {
           category: form.get('category'),
           description: form.get('description'),
           dailyRate: form.get('dailyRate'),
+          photos: productPhotos,
         }),
       })
       setEditingProduct(null)
@@ -327,8 +334,8 @@ export default function useAdminWorkspace({ token }) {
     auditEvents,
     coupons,
     packages,
-    declineTarget,
-    setDeclineTarget,
+    decisionTarget,
+    setDecisionTarget,
     revenue,
     photos,
     setPhotos,
@@ -362,13 +369,17 @@ export default function useAdminWorkspace({ token }) {
     refreshRequests,
     pendingRequests,
     runAction,
-    handlePhotos,
     submitProduct,
     openAddItem,
     submitUser,
     submitCoupon,
     submitPackage,
     updateUser,
+    deleteUser,
+    holdProduct,
+    deleteProduct,
+    passwordPrompt,
+    setPasswordPrompt,
     reviewShop,
     visibleProducts,
     visibleUsers,

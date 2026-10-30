@@ -6,6 +6,8 @@ export function RentalAction({ rental, onVerify }) {
   if (rental.returnMethod === 'partner' && ['active', 'return_in_transit'].includes(rental.status))
     return <span className="handover-waiting">Follow the assigned rider in delivery tracking.</span>
   if (rental.status === 'confirmed') {
+    if (rental.pickupCompleted) return <span className="handover-waiting">Your shop handover is verified. Remaining shops are pending.</span>
+    if (rental.deliveryMethod === 'partner') return <span className="handover-waiting">Follow the shipment handover actions below.</span>
     if (
       rental.requiresPickupPreparation &&
       !rental.readyForPickupAt &&
@@ -29,22 +31,14 @@ export function RentalAction({ rental, onVerify }) {
           Enter pickup OTP
         </button>
       )
-    if (rental.pickupVerification?.status === 'customer_verified')
-      return (
-        <button
-          className="handover-button primary"
-          onClick={() => onVerify({ rental, type: 'handover' })}
-        >
-          <Glyph name="check" width="16" />
-          Confirm handover
-        </button>
-      )
     if (
       !['authorized', 'paid'].includes(rental.payment?.status) ||
       !rental.items.every((item) => item.decision === 'accepted')
     )
       return <span className="handover-waiting">Awaiting payment / approval</span>
-    return <span className="handover-waiting">Waiting for customer pickup request</span>
+    return <button className="handover-button primary" onClick={() => onVerify({ rental, type: 'pickup' })}>
+      <Glyph name="shield" width="16" /> Send pickup OTP
+    </button>
   }
   if (rental.status === 'returned')
     return (
@@ -53,25 +47,6 @@ export function RentalAction({ rental, onVerify }) {
         onClick={() => onVerify({ rental, type: 'complete' })}
       >
         Complete rental
-      </button>
-    )
-  if (rental.status === 'active' && rental.returnVerification?.status === 'pending')
-    return (
-      <button
-        className="handover-button primary return"
-        onClick={() => onVerify({ rental, type: 'return' })}
-      >
-        <Glyph name="shield" width="16" />
-        Enter return OTP
-      </button>
-    )
-  if (rental.status === 'active' && rental.returnOtpVerifiedAt)
-    return (
-      <button
-        className="handover-button primary"
-        onClick={() => onVerify({ rental, type: 'receipt' })}
-      >
-        Confirm return & inspect
       </button>
     )
   if (rental.status === 'active' && rental.pickupVerifiedAt)

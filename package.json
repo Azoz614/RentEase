@@ -6,6 +6,10 @@
     "dev:server": "npm --prefix server run start-dev",
     "build": "npm --prefix client run build",
     "start": "npm --prefix server start",
-    "lint": "npm --prefix client run lint"
+    "lint": "npm --prefix client run lint",
+    "test": "npm --prefix server test && npm --prefix client test",
+    "test:worker": "npm --prefix server run test:worker",
+    "deploy:staging": "npm --prefix server run deploy:staging && npm --prefix client run deploy:staging",
+    "deploy:production": "npm --prefix server run deploy:production && npm --prefix client run deploy:production"
   }
 }

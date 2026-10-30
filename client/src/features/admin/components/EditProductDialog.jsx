@@ -1,9 +1,14 @@
+import { useState } from 'react'
+import ProductPhotoManager from '../../products/components/ProductPhotoManager.jsx'
+
 export default function EditProductDialog({
   busy,
   editProduct,
   editingProduct,
   setEditingProduct,
 }) {
+  const [photos, setPhotos] = useState(() => (editingProduct.photos || []).map((data, index) => ({ data, name: `Saved photo ${index + 1}` })))
+  const [readingPhotos, setReadingPhotos] = useState(false)
   return (
     <div
       className="admin-modal-backdrop"
@@ -32,7 +37,7 @@ export default function EditProductDialog({
             ×
           </button>
         </div>
-        <form className="admin-form" onSubmit={editProduct}>
+        <form className="admin-form" onSubmit={(event) => editProduct(event, photos.map((photo) => photo.data))}>
           <label>
             Product name
             <input name="title" defaultValue={editingProduct.title} maxLength="120" required />
@@ -62,6 +67,7 @@ export default function EditProductDialog({
               required
             />
           </label>
+          <ProductPhotoManager photos={photos} setPhotos={setPhotos} disabled={busy} onReadingChange={setReadingPhotos} />
           <div className="admin-modal-actions">
             <button
               type="button"
@@ -70,7 +76,7 @@ export default function EditProductDialog({
             >
               Cancel
             </button>
-            <button className="admin-primary" type="submit" disabled={busy}>
+            <button className="admin-primary" type="submit" disabled={busy || readingPhotos || !photos.length}>
               {busy ? 'Saving…' : 'Save changes'}
             </button>
           </div>

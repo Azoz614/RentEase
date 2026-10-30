@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { useDismiss } from './useDismiss.js'
 
 const navigationIcons = {
   overview: 'grid',
@@ -20,12 +21,24 @@ const navigationIcons = {
   reports: 'chart',
   coupons: 'tag',
   activity: 'history',
+  reviews: 'star',
 }
 
 import { UiIcon } from './UiIcon.jsx'
 
 export function WorkspaceNav({ items, active, onSelect, onLogout, label, className = '' }) {
-  const mobile = useRef(null)
+  const mobile = useRef(null),
+    summary = useRef(null)
+  // The phone menu is a <details>; mirror its open state so outside presses can close it.
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useDismiss(
+    mobile,
+    mobileOpen,
+    () => {
+      if (mobile.current) mobile.current.open = false
+    },
+    summary,
+  )
   const select = (id) => {
     onSelect(id)
     if (mobile.current) mobile.current.open = false
@@ -52,14 +65,9 @@ export function WorkspaceNav({ items, active, onSelect, onLogout, label, classNa
       <details
         ref={mobile}
         className="re-mobile-workspace-nav"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            mobile.current.open = false
-            mobile.current.querySelector('summary')?.focus()
-          }
-        }}
+        onToggle={(event) => setMobileOpen(event.currentTarget.open)}
       >
-        <summary>
+        <summary ref={summary}>
           <UiIcon name="menu" />
           <span>{items.find((item) => item.id === active)?.label || 'Workspace menu'}</span>
           <UiIcon name="chevron" />

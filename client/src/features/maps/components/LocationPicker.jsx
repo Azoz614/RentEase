@@ -6,7 +6,8 @@ import { position, geoPoint } from '../utils/coordinates.js'
 import { MapAttribution } from './MapAttribution.jsx'
 import GeoapifyMap from './GeoapifyMap.jsx'
 
-export function LocationPicker({ value, onConfirm, onChange }) {
+export function LocationPicker({ value, onConfirm, onChange, compact = false, confirmLabel = 'Confirm location' }) {
+  const [mapOpen, setMapOpen] = useState(false)
   const [draft, setDraft] = useState(value || {}),
     [query, setQuery] = useState(''),
     [suggestions, setSuggestions] = useState([]),
@@ -144,9 +145,17 @@ export function LocationPicker({ value, onConfirm, onChange }) {
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )
   }
+  const mapPicker = <>
+      <div className="re-map-actions">
+        {!compact && <button type="button" onClick={locate} disabled={busy}>Use my current location</button>}
+        <button type="button" onClick={() => reverse()} disabled={busy || !draft.location}>Look up pin address</button>
+      </div>
+      <GeoapifyMap markers={draft.location ? [{ id: 'pin', location: draft.location, title: 'Selected location', draggable: true }] : []} onPin={pin} />
+      <small>Click the map or drag the pin to choose your location.</small>
+    </>
   return (
     <section className="re-location-picker">
-      <label htmlFor={`${id}-search`}>Search an address</label>
+      <label htmlFor={`${id}-search`}>{compact ? 'Town, street or landmark' : 'Search an address'}</label>
       <input
         id={`${id}-search`}
         value={query}
@@ -160,6 +169,7 @@ export function LocationPicker({ value, onConfirm, onChange }) {
         }}
         placeholder="Street, town or landmark"
         autoComplete="off"
+        autoFocus={compact}
         aria-controls={suggestions.length ? `${id}-suggestions` : undefined}
       />
       {busy && <small role="status">Finding location…</small>}
@@ -184,26 +194,9 @@ export function LocationPicker({ value, onConfirm, onChange }) {
           No matching addresses found. Try a nearby landmark or place a pin.
         </small>
       )}
-      <div className="re-map-actions">
-        <button type="button" onClick={locate} disabled={busy}>
-          Use my current location
-        </button>
-        <button type="button" onClick={() => reverse()} disabled={busy || !draft.location}>
-          Look up pin address
-        </button>
-      </div>
-      <GeoapifyMap
-        markers={
-          draft.location
-            ? [{ id: 'pin', location: draft.location, title: 'Selected location', draggable: true }]
-            : []
-        }
-        onPin={pin}
-      />
-      <small>
-        Click the map or drag the pin to find its address. You can correct the address below.
-      </small>
-      <label htmlFor={`${id}-address`}>Delivery / shop address</label>
+      {compact ? <details className="re-nearby-adjust-pin" onToggle={(event) => setMapOpen(event.currentTarget.open)}><summary>Choose a point on the map instead</summary>{mapOpen && mapPicker}</details> : mapPicker}
+      {(!compact || draft.location) && <>
+      <label htmlFor={`${id}-address`}>{compact ? 'Selected area' : 'Delivery / shop address'}</label>
       <textarea
         id={`${id}-address`}
         value={draft.address || ''}
@@ -215,7 +208,8 @@ export function LocationPicker({ value, onConfirm, onChange }) {
           updateDraft({ ...draft, address: event.target.value })
         }}
       />
-      {draft.location && (
+      </>}
+      {draft.location && !compact && (
         <small>
           Latitude {draft.location.coordinates[1].toFixed(6)} · Longitude{' '}
           {draft.location.coordinates[0].toFixed(6)}
@@ -233,9 +227,10 @@ export function LocationPicker({ value, onConfirm, onChange }) {
           disabled={!draft.location || (draft.address || '').trim().length < 5 || busy}
           onClick={() => onConfirm(draft)}
         >
-          Confirm location
+          {confirmLabel}
         </button>
       )}
+      {compact && !draft.location && <small>Choose an address suggestion to find rentals around it.</small>}
       <MapAttribution />
     </section>
   )

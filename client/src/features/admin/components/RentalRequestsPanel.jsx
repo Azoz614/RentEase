@@ -1,12 +1,10 @@
 import { Empty } from './Empty.jsx'
 
 export default function RentalRequestsPanel({
-  api,
   busy,
   rentalRequests,
   requestsLoading,
-  runAction,
-  setDeclineTarget,
+  setDecisionTarget,
 }) {
   return (
     <section className="admin-card">
@@ -15,8 +13,8 @@ export default function RentalRequestsPanel({
           <span className="admin-kicker">PROVIDER WORKFLOW</span>
           <h2>Customer rental requests</h2>
           <p className="admin-card-subtitle">
-            All customer requests, across admin inventory and rental shops. New requests refresh
-            automatically.
+            Requests for the items you published. Rental shops review requests for their own
+            listings. New requests refresh automatically.
           </p>
         </div>
         <span className="admin-count">{rentalRequests.length} requests</span>
@@ -54,10 +52,11 @@ export default function RentalRequestsPanel({
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            setDeclineTarget({
+                            setDecisionTarget({
                               requestId: request._id,
                               productId: item.productId,
                               title: item.title,
+                              decision: 'rejected',
                             })
                           }
                         >
@@ -68,17 +67,12 @@ export default function RentalRequestsPanel({
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            runAction(
-                              () =>
-                                api(
-                                  `/api/provider/requests/${request._id}/items/${item.productId}`,
-                                  {
-                                    method: 'PATCH',
-                                    body: JSON.stringify({ decision: 'accepted' }),
-                                  },
-                                ),
-                              'Request accepted.',
-                            )
+                            setDecisionTarget({
+                              requestId: request._id,
+                              productId: item.productId,
+                              title: item.title,
+                              decision: 'accepted',
+                            })
                           }
                         >
                           Accept
@@ -93,7 +87,7 @@ export default function RentalRequestsPanel({
       ) : requestsLoading ? (
         <p role="status">Loading customer requests…</p>
       ) : (
-        <Empty text="There are no customer rental requests yet." />
+        <Empty text="There are no customer rental requests for your items yet." />
       )}
     </section>
   )

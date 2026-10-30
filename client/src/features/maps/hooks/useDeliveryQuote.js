@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { position } from '../utils/coordinates.js'
-import { validRentalDates } from '../../rentals/utils/rentalAvailability.js'
+import { toServerDate, validRentalDates } from '../../rentals/utils/rentalAvailability.js'
 
 export default function useDeliveryQuote({
   api,
@@ -12,6 +12,7 @@ export default function useDeliveryQuote({
   endDate,
   billingUnit,
   couponCode,
+  loyaltyRewardProductId = '',
   pricingContext,
 }) {
   const [result, setResult] = useState(null)
@@ -25,10 +26,11 @@ export default function useDeliveryQuote({
   const payload = JSON.stringify({
     productIds,
     ...selection,
-    startDate,
-    endDate,
+    startDate: toServerDate(startDate),
+    endDate: toServerDate(endDate),
     billingUnit,
     couponCode,
+    loyaltyRewardProductId,
   })
   // A default-address edit must invalidate a quote even when its ID stays the same.
   const key = JSON.stringify([

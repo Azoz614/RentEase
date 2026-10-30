@@ -144,6 +144,8 @@ export default function useAccountSettings({
             : { verificationOtp: passwordOtp }),
         }),
       })
+      // The server signs out other sessions and returns a replacement token for this one.
+      if (result.token) onAccountUpdate?.({}, result.token)
       setPasswordMessage(result.message)
       setPasswordCurrent('')
       setPasswordOtp('')

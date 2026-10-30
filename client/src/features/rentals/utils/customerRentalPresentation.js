@@ -35,6 +35,8 @@ export const filters = [
   ['upcoming', 'Upcoming'],
   ['active', 'On rental'],
   ['past', 'Past rentals'],
+  ['completed', 'Completed'],
+  ['cancelled', 'Cancelled'],
 ]
 
 export const isUpcoming = (rental) => ['pending', 'confirmed'].includes(rental.status || 'pending')
@@ -75,6 +77,14 @@ export function nextStep(rental) {
       description: 'Check your mailbox for updates from the team about this booking.',
       icon: 'mail',
       tone: 'amber',
+    }
+  if (rental.items?.some((item) => item.reviewable))
+    return {
+      title: 'How was your rental?',
+      description: 'Rate the items you rented. It takes a few seconds and helps other renters.',
+      icon: 'check',
+      tone: 'green',
+      review: true,
     }
   if (rental.returnVerifiedAt)
     return {
@@ -119,7 +129,9 @@ export function nextStep(rental) {
   if (canPay(rental))
     return {
       title: 'One step before pickup',
-      description: 'Review your rental payment and refundable deposit to get ready for collection.',
+      description: rental.declinedItems?.length
+        ? `The shop declined ${rental.declinedItems.map((item) => item.title).join(', ')}, so your booking was repriced for the approved items. Review the new total and pay, or cancel.`
+        : 'Review your rental payment and refundable deposit to get ready for collection.',
       icon: 'receipt',
       tone: 'amber',
     }
@@ -139,15 +151,15 @@ export function nextStep(rental) {
     return {
       title: 'You’re ready for pickup',
       description:
-        'Verify your email below. An administrator can also email you a six-digit pickup code at collection and confirm the physical handover.',
+        'Meet the shop to receive your items. The shop sends a six-digit code to your email and private inbox, then verifies the code you provide.',
       icon: 'shield',
       tone: 'blue',
     }
   if (rental.items.some((item) => item.decision === 'rejected'))
     return {
-      title: 'An item needs your attention',
+      title: 'An item was declined',
       description:
-        'Some items were declined. Review the item decisions below and contact the team before making plans.',
+        'The shop declined at least one item and is still reviewing the rest. Once it finishes, you can pay for the approved items.',
       icon: 'mail',
       tone: 'amber',
     }

@@ -1,0 +1,89 @@
+
+{
+  // RentEase API on Cloudflare Workers. See docs/DEPLOYMENT.md.
+  // Always deploy with an environment: `npx wrangler deploy --env staging|production`.
+  // The top level is only used by `npm run dev:worker` (local `wrangler dev`).
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "rentease-api-dev",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-20",
+  "compatibility_flags": ["nodejs_compat"],
+  // sharp is native code; the Worker processes identity photos with the Images binding.
+  "alias": { "sharp": "./src/platform/sharp-unavailable.mjs" },
+  // Halves the upload and speeds up cold starts; keep_names (default) preserves class names.
+  "minify": true,
+  "observability": { "enabled": true },
+  // Only the web Worker (service binding) reaches the API: no public workers.dev URL.
+  "workers_dev": false,
+  "preview_urls": false,
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ApiServer"] }],
+  // Must match DISPATCH_CRON / RETENTION_CRON in src/worker/runtime.mjs (UTC times).
+  "triggers": { "crons": ["*/5 * * * *", "30 20 * * *"] },
+
+  "durable_objects": { "bindings": [{ "name": "API_SERVER", "class_name": "ApiServer" }] },
+  "r2_buckets": [
+    { "binding": "MEDIA_BUCKET", "bucket_name": "rentease-media-dev" },
+    { "binding": "IDENTITY_BUCKET", "bucket_name": "rentease-identity-dev" }
+  ],
+  "images": { "binding": "IMAGES" },
+  // Non-secret settings. Secrets (MONGO_URI, SESSION_SECRET, ...) go in .dev.vars locally
+  // and are uploaded from GitHub Environment secrets by .github/workflows/deploy.yml.
+  "vars": {
+    "NODE_ENV": "development",
+    "PAYMENT_PROVIDER": "sandbox",
+    "DELIVERY_SEARCH_TIMEOUT_SECONDS": "30",
+    "IDENTITY_RETENTION_DAYS": "365",
+    "IDENTITY_RETENTION_PURGE": "dry-run",
+    "API_LOCATION_HINT": "apac",
+    "MONGO_MAX_POOL_SIZE": "2",
+    "SMTP_HOST": "smtp.gmail.com",
+    // 587 (STARTTLS). On Workers, nodemailer connects through src/worker/smtp-socket.mjs.
+    "SMTP_PORT": "587"
+  },
+
+  "env": {
+    "staging": {
+      "name": "rentease-api-staging",
+      "durable_objects": { "bindings": [{ "name": "API_SERVER", "class_name": "ApiServer" }] },
+      "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "rentease-media-staging" },
+        { "binding": "IDENTITY_BUCKET", "bucket_name": "rentease-identity-staging" }
+      ],
+      "images": { "binding": "IMAGES" },
+      "vars": {
+        "NODE_ENV": "production",
+        "PAYMENT_PROVIDER": "sandbox",
+        // Staging may simulate payments; production refuses the sandbox (no money is collected).
+        "ALLOW_SANDBOX_PAYMENTS": "true",
+        "DELIVERY_SEARCH_TIMEOUT_SECONDS": "30",
+        "IDENTITY_RETENTION_DAYS": "365",
+        "IDENTITY_RETENTION_PURGE": "dry-run",
+        "API_LOCATION_HINT": "apac",
+        "MONGO_MAX_POOL_SIZE": "2",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587"
+      }
+    },
+    "production": {
+      "name": "rentease-api",
+      "durable_objects": { "bindings": [{ "name": "API_SERVER", "class_name": "ApiServer" }] },
+      "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "rentease-media" },
+        { "binding": "IDENTITY_BUCKET", "bucket_name": "rentease-identity" }
+      ],
+      "images": { "binding": "IMAGES" },
+      "vars": {
+        "NODE_ENV": "production",
+        "PAYMENT_PROVIDER": "sandbox",
+        "DELIVERY_SEARCH_TIMEOUT_SECONDS": "30",
+        "IDENTITY_RETENTION_DAYS": "365",
+        // Change to "apply" once the retention period has been confirmed for production.
+        "IDENTITY_RETENTION_PURGE": "dry-run",
+        "API_LOCATION_HINT": "apac",
+        "MONGO_MAX_POOL_SIZE": "2",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587"
+      }
+    }
+  }
+}

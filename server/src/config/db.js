@@ -3,10 +3,10 @@ import { DeliveryTask } from '../modules/delivery/delivery-task.model.mjs'
 import { PartnerPresence } from '../modules/delivery/partner-presence.model.mjs'
 import { Notification } from '../modules/notifications/notification.model.mjs'
 
-export async function connectDB() {
+export async function connectDB(options) {
   if (!process.env.MONGO_URI)
     throw new Error('Set MONGO_URI in server/.env before starting RentEase.')
-  await mongoose.connect(process.env.MONGO_URI)
+  await mongoose.connect(process.env.MONGO_URI, options)
   await Promise.all([DeliveryTask.init(), PartnerPresence.init(), Notification.init()])
   console.log('Connected to MongoDB')
   const hello = await mongoose.connection.db.admin().command({ hello: 1 })

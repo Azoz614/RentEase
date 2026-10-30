@@ -1,0 +1,16 @@
+.product-photo-manager { min-width: 0; margin: 12px 0; padding: 18px; border: 1px solid #dce5e9; border-radius: 14px; background: #f8fafb; }
+.product-photo-manager legend { padding: 0 6px; font-weight: 700; color: #173149; }
+.product-photo-manager legend span { margin-left: 10px; font-size: 12px; color: #526579; }
+.product-photo-manager > p { margin: 0 0 14px; color: #526579; font-size: 13px; line-height: 1.6; }
+.product-photo-manager-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; }
+.product-photo-manager figure { margin: 0; min-width: 0; overflow: hidden; border: 1px solid #dce5e9; border-radius: 10px; background: white; }
+.product-photo-manager figure img { display: block; width: 100%; height: 120px; object-fit: contain; background: #edf2f5; }
+.product-photo-manager figcaption { padding: 8px; font-size: 12px; font-weight: 650; color: #173149; }
+.product-photo-actions { display: flex; gap: 4px; padding: 0 8px 8px; }
+.product-photo-actions button { min-height: 34px; padding: 4px 8px; border: 1px solid #dce5e9; border-radius: 6px; background: white; color: #173149; cursor: pointer; font-size: 12px; }
+.product-photo-actions button:disabled { opacity: .4; cursor: default; }
+.product-photo-manager .product-photo-add { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding: 14px; border: 1px dashed #9bafbd; border-radius: 10px; color: #315f82; font-size: 14px; cursor: pointer; }
+.product-photo-add input { max-width: 100%; font-size: 13px; }
+.product-photo-manager .product-photo-error { margin: 12px 0 0; color: #a12032; }
+.product-photo-manager button:focus-visible, .product-photo-add input:focus-visible { outline: 3px solid #315f8266; outline-offset: 2px; }
+.product-photo-dialog-actions { display: flex; justify-content: flex-end; gap: 12px; }

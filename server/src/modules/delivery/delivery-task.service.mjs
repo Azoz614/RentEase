@@ -6,10 +6,17 @@ import { DeliveryLocation } from './delivery-location.model.mjs'
 import { RentalRequest } from '../rentals/rental.model.mjs'
 import { Product } from '../products/product.model.mjs'
 import { User } from '../users/user.model.mjs'
+import { pointsForItems } from '../loyalty/loyalty.service.mjs'
 import { Notification } from '../notifications/notification.model.mjs'
+import { publishHandoverOtp, removeHandoverOtp } from '../notifications/handover-notifications.service.mjs'
 import { AuditLog } from '../admin/audit-log.model.mjs'
 import { point } from '../maps/location.service.mjs'
-import { drivingRoute } from './delivery-quote.service.mjs'
+import {
+  drivingRoute,
+  fee as routeFee,
+  DELIVERY_BASE_FEE,
+  DELIVERY_RATE_PER_KM,
+} from './delivery-quote.service.mjs'
 import { identityRate } from '../identity/identity-security.service.mjs'
 import { sendRegistrationOtp } from '../../config/mailer.js'
 import { requireTransactions } from '../../services/mongo-transactions.mjs'
@@ -19,6 +26,8 @@ export const SEARCH_RADIUS_METERS = 10000
 // Search state lives in MongoDB so restarts and multiple API processes resume the same rounds.
 export const SEARCH_RADII = [2000, 5000, 10000, 25000, 50000, 100000, 20040000]
 const searchTimeout = () => Math.max(5, Math.min(300, Number(process.env.DELIVERY_SEARCH_TIMEOUT_SECONDS) || 30)) * 1000
+// After the widest radius the search keeps checking for riders who come online, until this window ends.
+const searchWindow = () => Math.max(1, Math.min(120, Number(process.env.DELIVERY_SEARCH_WINDOW_MINUTES) || 15)) * 60000
 const TTL = 5 * 60000,
   COOLDOWN = 60000,
   MAX_ATTEMPTS = 5
@@ -147,18 +156,30 @@ export async function broadcastAvailableTasks() {
         : !['active', 'return_in_transit'].includes(rental.status) ||
           (rental.returnMethod ? rental.returnMethod !== 'partner' : !rental.deliveryReturnRequestedAt))) continue
       const round = task.search.round || 0
-      if (round >= SEARCH_RADII.length) {
-        await DeliveryTask.updateOne({ _id: task._id, status: 'available',
+      const widest = round >= SEARCH_RADII.length
+      const windowOver = now - new Date(task.search.startedAt || 0) >= searchWindow()
+      if (widest && windowOver) {
+        const ended = await DeliveryTask.updateOne({ _id: task._id, status: 'available',
           'search.state': 'searching', 'search.round': round },
           { $set: { 'search.state': 'exhausted', 'search.exhaustedAt': now }, $inc: { __v: 1 } })
+        if (ended.modifiedCount) {
+          // Tell the customer and shop the search ended, so they can retry; drop the stale offers.
+          await clearOffers([task._id])
+          await Notification.insertMany([task.customerId, task.providerId].filter(Boolean).map((userId) => ({
+            userId, requestId: task.rentalId, type: 'delivery', link: 'requests', title: 'No rider available yet',
+            body: task.direction === 'return'
+              ? 'No nearby rider accepted the return collection. Search again from My rentals, or return the items yourself.'
+              : 'No nearby rider accepted this delivery. Search again from the booking when you are ready.',
+          })))
+        }
         continue
       }
-      const radius = SEARCH_RADII[round]
+      const radius = SEARCH_RADII[Math.min(round, SEARCH_RADII.length - 1)]
       const claimed = await DeliveryTask.updateOne({ _id: task._id, status: 'available',
         'search.state': 'searching', 'search.round': round, 'search.nextExpansionAt': { $lte: now } },
         { $set: { 'search.radiusMeters': radius,
           'search.nextExpansionAt': new Date(now.getTime() + searchTimeout()) },
-          $inc: { 'search.round': 1, __v: 1 } })
+          $inc: { 'search.round': widest ? 0 : 1, __v: 1 } })
       if (!claimed.modifiedCount) continue
       const near = await PartnerPresence.find({
         online: true,
@@ -215,6 +236,13 @@ export async function broadcastAvailableTasks() {
   }
 }
 
+// Offers are upserted once per partner and task; clearing them lets a restarted search
+// notify the same riders again, and stops stale offers lingering in partner inboxes.
+async function clearOffers(taskIds, session) {
+  if (taskIds.length)
+    await Notification.deleteMany({ deliveryTaskId: { $in: taskIds }, type: 'delivery_offer' }, { session })
+}
+
 export function startDeliveryDispatch() {
   const timer = setInterval(() => broadcastAvailableTasks(), 3000)
   timer.unref()
@@ -231,12 +259,18 @@ export async function assignDelivery(rentalId, actor) {
     if (!rental || rental.status !== 'confirmed' || rental.deliveryMethod !== 'partner' ||
       !rental.items.every((i) => i.decision === 'accepted'))
       throw fail(409, 'APPROVAL_REQUIRED', 'The shop must approve every rental item before you assign a partner.')
+    // A rider who accepts is locked to the trip, so never dispatch an unpaid booking.
+    if (!['authorized', 'paid'].includes(rental.payment?.status))
+      throw fail(409, 'PAYMENT_REQUIRED', 'Pay for this booking before assigning a delivery partner.')
     await createDeliveryTasks(rental, session)
     const now = new Date()
-    await DeliveryTask.updateMany({ rentalId, direction: 'delivery', status: 'available',
-      $or: [{ 'search.state': { $in: ['waiting', 'exhausted'] } }, { 'search.state': { $exists: false } }] },
+    const restarted = await DeliveryTask.find({ rentalId, direction: 'delivery', status: 'available',
+      $or: [{ 'search.state': { $in: ['waiting', 'exhausted'] } }, { 'search.state': { $exists: false } }] })
+      .select('_id').session(session).lean()
+    await DeliveryTask.updateMany({ _id: { $in: restarted.map((task) => task._id) } },
       { $set: { search: { state: 'searching', radiusMeters: SEARCH_RADII[0], round: 0,
         startedAt: now, nextExpansionAt: now }, offeredPartnerIds: [], declinedPartnerIds: [] }, $inc: { __v: 1 } }, { session })
+    await clearOffers(restarted.map((task) => task._id), session)
     rental.deliveryAssignmentRequestedAt ||= now
     await rental.save({ session })
   })
@@ -369,10 +403,14 @@ export async function listTasks(actor) {
     .select('status payment.status readyForPickupAt deliveryReturnRequestedAt returnMethod')
     .lean()
   const people = await User.find({
-    _id: { $in: tasks.flatMap((t) => [t.assignedPartner, t.providerId]).filter(Boolean) },
+    _id: { $in: tasks.flatMap((t) => [t.assignedPartner, t.providerId, t.customerId,
+      ...t.verifications.flatMap((v) => [v.initiatedBy, v.recipientId, v.verifiedBy])]).filter(Boolean) },
   })
     .select('username shopName phone')
     .lean()
+  const privateCodes = await Notification.find({ userId: actor._id, type: 'handover_otp',
+    deliveryTaskId: { $in: tasks.map((t) => t._id) }, expiresAt: { $gt: new Date() } })
+    .select('deliveryTaskId title body expiresAt').lean()
   const trackingScopes = tasks
     .filter((task) => task.assignedPartner && !terminal.includes(task.status))
     .map((task) => ({
@@ -402,6 +440,9 @@ export async function listTasks(actor) {
         const rental = rentals.find((r) => same(r._id, t.rentalId)),
           p = people.find((p) => same(p._id, t.assignedPartner))
         const provider = people.find((p) => same(p._id, t.providerId))
+        const customer = people.find((p) => same(p._id, t.customerId))
+        const kind = ['shop_pickup', 'customer_delivery', 'customer_return', 'shop_return'].find((kind) => stageFor(t, kind))
+        const sender = Boolean(kind && canHandover(t, kind, actor))
         const live =
           !terminal.includes(t.status) &&
           positions.find(
@@ -437,11 +478,23 @@ export async function listTasks(actor) {
               }
             : null,
           shop: provider?.shopName || provider?.username || 'Rental shop',
+          contacts: t.assignedPartner && (owned(t, actor) || assigned(t, actor) || same(t.customerId, actor._id))
+            ? { shop: provider ? { name: provider.shopName || provider.username, phone: provider.phone } : null,
+                customer: customer ? { name: customer.username, phone: customer.phone } : null } : null,
+          handoverKind: kind || null,
+          canSendOtp: sender,
+          canVerifyOtp: sender && (!t.otp || same(t.otp.initiatedBy, actor._id)),
+          otpNotice: privateCodes.find((n) => same(n.deliveryTaskId, t._id)) || null,
+          verifications: t.verifications.map((v) => ({ kind: v.kind, at: v.at,
+            ...(owned(t, actor) ? { senderId: v.initiatedBy, recipientId: v.recipientId, verifiedBy: v.verifiedBy,
+              senderName: people.find((p) => same(p._id, v.initiatedBy))?.username,
+              recipientName: people.find((p) => same(p._id, v.recipientId))?.username,
+              verifierName: people.find((p) => same(p._id, v.verifiedBy))?.username } : {}) })),
           canManage: owned(t, actor),
           canOperate: assigned(t, actor),
           history: t.history,
           challenge:
-            t.otp?.status === 'sent'
+            sender && t.otp?.status === 'sent'
               ? {
                   id: t.otp.id,
                   kind: t.otp.kind,
@@ -455,9 +508,11 @@ export async function listTasks(actor) {
   }
 }
 
-async function notifyTask(task, message, session) {
+// Notifies everyone involved in a trip except the person who just acted.
+async function notifyTask(task, message, session, actor) {
   for (const id of new Set(
-    [task.customerId, task.providerId, task.assignedPartner].filter(Boolean).map(String),
+    [task.customerId, task.providerId, task.assignedPartner].filter(Boolean).map(String)
+      .filter((id) => !actor || id !== String(actor._id)),
   ))
     await Notification.create(
       [
@@ -546,7 +601,7 @@ export async function acceptTask(id, actor) {
       throw fail(
         409,
         'ALREADY_ASSIGNED',
-        'Another partner accepted this task. Refresh your nearby requests.',
+        'This request is no longer available. Another rider may have accepted it, or the search ended.',
       )
     for (const item of rental.items.filter((i) =>
       accepted.productIds.some((id) => same(id, i.productId)),
@@ -573,6 +628,7 @@ export async function acceptTask(id, actor) {
         accepted.direction +
         ' task. Contact details are available in delivery tracking.',
       session,
+      actor,
     )
   })
   return { message: 'Task accepted. It has been removed from other partners’ available requests.' }
@@ -586,6 +642,7 @@ export async function declineTask(id, actor) {
     { $addToSet: { declinedPartnerIds: actor._id } },
   )
   if (!result.matchedCount) throw fail(409, 'TASK_CHANGED', 'This request is no longer available.')
+  await Notification.deleteOne({ userId: actor._id, deliveryTaskId: id, type: 'delivery_offer' })
   return { message: 'Request declined. Other nearby partners can still accept it.' }
 }
 
@@ -603,6 +660,7 @@ export async function retryReturnSearch(id, actor) {
     task.offeredPartnerIds = []
     task.declinedPartnerIds = []
     await task.save({ session })
+    await clearOffers([task._id], session)
     rental.statusHistory.push({ status: rental.status, by: actor._id, action: 'return.search_restarted' })
     await rental.save({ session })
   })
@@ -631,14 +689,22 @@ export async function quoteReturn(rentalId, actor, input = {}) {
     const origin = saved?.origin || provider.shopLocation
     if (!origin) throw fail(409, 'LOCATION_REQUIRED', 'The shop must confirm its return location before collection.')
     const route = await drivingRoute(location.location, origin)
+    // A return fee agreed in the original booking stands. Otherwise the trip is priced by route
+    // at the delivery rate and charged now, so the rider is always paid for the collection.
+    // Older bookings have no flag; a fee saved with the booking quote was paid up front.
+    const prepaid = saved?.returnFeePrepaid !== false && Number(saved?.returnFee) > 0
     shipments.push({ providerId: String(provider._id), origin, shopAddress: saved?.shopAddress || provider.shopAddress,
       shopName: saved?.shopName || provider.shopName || provider.username,
       returnDistanceKm: route.distanceKm, returnEtaMinutes: route.etaMinutes,
-      // Preserve the return fee already agreed and included in the original booking.
-      returnFee: saved?.returnFee || 0 })
+      returnFee: prepaid ? saved.returnFee : routeFee(route.distanceKm, DELIVERY_BASE_FEE, DELIVERY_RATE_PER_KM),
+      returnFeePrepaid: prepaid })
   }
+  const charge = shipments.reduce((sum, s) => sum + (s.returnFeePrepaid ? 0 : s.returnFee), 0)
+  const remainingDeposit = Math.max(0, Number(rental.payment?.depositHeld || 0) -
+    (rental.payment?.adjustments || []).reduce((sum, a) => sum + Number(a.amount || 0), 0))
   const quote = { rentalId: String(rental._id), customerId: String(actor._id), collection: location,
-    shipments, fee: shipments.reduce((sum, s) => sum + s.returnFee, 0),
+    shipments, fee: shipments.reduce((sum, s) => sum + s.returnFee, 0), charge,
+    coveredByDeposit: charge <= remainingDeposit,
     distanceKm: shipments.reduce((sum, s) => sum + s.returnDistanceKm, 0), expiresAt: Date.now() + 300000 }
   const payload = Buffer.from(JSON.stringify(quote)).toString('base64url')
   return { ...quote, quoteToken: payload + '.' + hash('return-quote:' + payload) }
@@ -673,6 +739,18 @@ export async function requestReturn(rentalId, actor, input = {}) {
     if (rental.deliveryReturnRequestedAt) return
     if (rental.returnMethod === 'pickup' || rental.returnOtpVerifiedAt || rental.selfReturns.some((c) => c.status === 'verified'))
       throw fail(409, 'RETURN_IN_PROGRESS', 'Self return is already in progress.')
+    // Collection not paid for at booking is charged against the held deposit, like late fees,
+    // so the deposit refund already accounts for it.
+    const charge = quote.shipments.reduce((sum, s) => sum + (s.returnFeePrepaid ? 0 : Number(s.returnFee) || 0), 0)
+    if (charge > 0) {
+      const remaining = Number(rental.payment?.depositHeld || 0) -
+        (rental.payment?.adjustments || []).reduce((sum, a) => sum + Number(a.amount || 0), 0)
+      if (charge > remaining)
+        throw fail(409, 'DEPOSIT_INSUFFICIENT',
+          `Collection costs LKR ${charge.toLocaleString('en-LK')}, more than your remaining deposit. Return the items to the shop yourself, or contact the shop.`)
+      rental.payment.adjustments.push({ type: 'return_collection', amount: charge, createdBy: actor._id,
+        note: `Partner return collection (${Number(quote.distanceKm || 0).toFixed(1)} km).` })
+    }
     rental.returnMethod = 'partner'
     rental.returnDestination = quote.collection
     for (const shipment of quote.shipments) {
@@ -763,7 +841,7 @@ export async function markReady(id, actor) {
       note: 'Shop prepared its paid rental shipment.',
     })
     await rental.save({ session })
-    await notifyTask(task, 'The shop has prepared the items for OTP-secured collection.', session)
+    await notifyTask(task, 'The shop has prepared the items for OTP-secured collection.', session, actor)
   })
   return { message: 'Shop items are ready for collection.' }
 }
@@ -781,17 +859,19 @@ const stageFor = (task, kind) => {
   }
   return Object.hasOwn(stages, kind) && stages[kind]
 }
-async function otpContext(task, kind, actor, verifying = false, session) {
+function canHandover(task, kind, actor) {
+  if (kind === 'shop_pickup') return owned(task, actor)
+  if (kind === 'customer_return') return actor.role === 'user' && same(task.customerId, actor._id)
+  return assigned(task, actor)
+}
+async function otpContext(task, kind, actor, _verifying = false, session) {
   if (!stageFor(task, kind))
     throw fail(409, 'INVALID_HANDOVER', 'This handover is not the next stage for this task.')
-  const providerVerifies = verifying && ['shop_pickup', 'shop_return'].includes(kind)
-  if (providerVerifies ? !owned(task, actor) : !assigned(task, actor))
+  if (!canHandover(task, kind, actor))
     throw fail(
       403,
       'WRONG_VERIFIER',
-      providerVerifies
-        ? 'Only the responsible shop owner or an administrator can verify this shop handover.'
-        : 'Only the assigned delivery partner can perform this handover.',
+      'Only the person handing over the items can send and verify this code.',
     )
   const rental = await activeRental(task, session)
   if (
@@ -804,15 +884,16 @@ async function otpContext(task, kind, actor, verifying = false, session) {
       'PICKUP_NOT_READY',
       'The rental must be paid and the shop must mark these items ready before collection.',
     )
-  const recipientId =
-    ['shop_pickup', 'shop_return'].includes(kind) ? task.assignedPartner : task.customerId
+  const recipientId = { shop_pickup: task.assignedPartner, customer_delivery: task.customerId,
+    customer_return: task.assignedPartner, shop_return: task.providerId }[kind]
   const query = User.findById(recipientId).select('email active role shopStatus')
   if (session) query.session(session)
   const recipient = await query
   if (
     recipient &&
-    (['shop_pickup', 'shop_return'].includes(kind)
-      ? recipient.role !== 'delivery_partner' : recipient.role !== 'user')
+    (['shop_pickup', 'customer_return'].includes(kind)
+      ? recipient.role !== 'delivery_partner' : kind === 'customer_delivery' ? recipient.role !== 'user'
+        : !['admin', 'rental_shop'].includes(recipient.role) || (recipient.role === 'rental_shop' && recipient.shopStatus !== 'approved'))
   )
     throw fail(
       409,
@@ -829,6 +910,7 @@ async function otpContext(task, kind, actor, verifying = false, session) {
 }
 
 export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationOtp) {
+  await requireTransactions()
   await identityRate(actor._id, 'delivery-otp-send', 20)
   const task = await getTask(id, actor),
     { recipient } = await otpContext(task, kind, actor)
@@ -854,7 +936,7 @@ export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationO
   }
   otp.hash = codeHash(task, otp, code)
   const claimed = await DeliveryTask.updateOne(
-    { _id: task._id, __v: task.__v, status: task.status, assignedPartner: actor._id },
+    { _id: task._id, __v: task.__v, status: task.status, assignedPartner: task.assignedPartner },
     { $set: { otp }, $inc: { __v: 1 } },
   )
   if (!claimed.modifiedCount)
@@ -869,6 +951,7 @@ export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationO
     customer_return: 'collect the return from the customer',
     shop_return: 'confirm receipt at the rental shop',
   }
+  if (previous?.id) await removeHandoverOtp(previous.id)
   try {
     await sendEmail(recipient.email, code, {
       subject: 'RentEase delivery handover verification',
@@ -880,9 +963,17 @@ export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationO
         ' for booking #' +
         task.rentalId +
         '. ' +
-        (['shop_pickup', 'shop_return'].includes(kind)
-          ? 'Give this code to the authorized shop owner or administrator.'
-          : 'Give this code to your assigned delivery partner.'),
+        'After receiving the items, give this code to the person handing them over.',
+    })
+    await mongoose.connection.transaction(async (session) => {
+      const sent = await DeliveryTask.updateOne(
+        { _id: task._id, status: task.status, assignedPartner: task.assignedPartner,
+          'otp.id': otp.id, 'otp.status': 'sending' },
+        { $set: { 'otp.status': 'sent' } }, { session },
+      )
+      if (!sent.modifiedCount) throw fail(409, 'TASK_CHANGED', 'The task changed while sending the code.')
+      await publishHandoverOtp({ recipientId: recipient._id, rentalId: task.rentalId,
+        taskId: task._id, challengeId: otp.id, code, stage: kind, expiresAt: otp.expiresAt }, session)
     })
   } catch (error) {
     console.error('Delivery OTP email failed:', error.code || error.name)
@@ -892,21 +983,11 @@ export async function sendTaskOtp(id, kind, actor, sendEmail = sendRegistrationO
     )
     throw fail(
       502,
-      'EMAIL_FAILED',
-      'The handover email could not be sent. Retry after 60 seconds.',
+      'OTP_DELIVERY_FAILED',
+      'The email and private notification could not both be delivered. This code is invalid. Retry after 60 seconds.',
       { retryAfter: 60 },
     )
   }
-  const sent = await DeliveryTask.updateOne(
-    { _id: task._id, status: task.status, 'otp.id': otp.id, 'otp.status': 'sending' },
-    { $set: { 'otp.status': 'sent' } },
-  )
-  if (!sent.modifiedCount)
-    throw fail(
-      409,
-      'TASK_CHANGED',
-      'This task changed while the email was sending. Refresh before continuing.',
-    )
   return {
     message: 'A handover code was sent to ' + otp.maskedEmail + '.',
     challengeId: otp.id,
@@ -955,13 +1036,9 @@ async function updateRentalForTask(task, rental, actor, session, kind) {
         { $pull: { rentalSlots: { requestId: rental._id } }, $inc: { __v: 1 } },
         { session },
       )
-      const points = rental.items.reduce(
-        (n, i) => n + Math.max(1, Math.floor(Number(i.rentalAmount || 0) / 1000)),
-        0,
-      )
       await User.updateOne(
         { _id: rental.customerId },
-        { $inc: { loyaltyPoints: points } },
+        { $inc: { loyaltyPoints: pointsForItems(rental.items) } },
         { session },
       )
     }
@@ -972,6 +1049,8 @@ async function updateRentalForTask(task, rental, actor, session, kind) {
     at: now,
     by: actor._id,
     action: 'delivery.' + kind + '.verified',
+    senderId: task.otp.initiatedBy,
+    recipientId: task.otp.recipientId,
     verificationId: task.otp.id,
     note: 'OTP-secured ' + kind.replaceAll('_', ' ') + ' for shop shipment.',
   })
@@ -1008,6 +1087,8 @@ export async function verifyTaskOtp(id, input, actor) {
       'This code is unavailable or already used. Request a new code.',
     )
   const { recipient } = await otpContext(task, input.kind, actor, true)
+  if (!same(otp.initiatedBy, actor._id))
+    throw fail(403, 'WRONG_VERIFIER', 'Only the account that sent this code can verify it. Send a new code from your account.')
   if (
     !same(otp.partnerId, task.assignedPartner) ||
     !same(otp.recipientId, recipient._id) ||
@@ -1089,11 +1170,17 @@ export async function verifyTaskOtp(id, input, actor) {
       partnerId: current.assignedPartner,
       providerId: current.providerId,
       recipientId: current.otp.recipientId,
+      initiatedBy: current.otp.initiatedBy,
       verifiedBy: actor._id,
     })
     current.history.push(history(actor, status, 'delivery.' + input.kind + '.verified'))
     await current.save({ session })
+    await removeHandoverOtp(otp.id, session)
     await updateRentalForTask(current, rental, actor, session, input.kind)
+    if (terminal.includes(status)) {
+      const { recordDeliveryCommission } = await import('../payments/commission.service.mjs')
+      await recordDeliveryCommission(current, rental, session)
+    }
     await notifyTask(
       current,
       'Verified handover: ' +
@@ -1159,25 +1246,131 @@ export async function progressTask(id, status, actor) {
     ))
       item.deliveryStatus = status
     await rental.save({ session })
-    await notifyTask(task, 'Delivery status: ' + status.replaceAll('_', ' ') + '.', session)
+    await notifyTask(task, 'Delivery status: ' + status.replaceAll('_', ' ') + '.', session, actor)
   })
   return { message: 'Trip progress updated.' }
 }
 
-export async function cancelDeliveryTasks(rentalId, session) {
+export async function cancelDeliveryTasks(rentalId, session, reason = 'cancelled') {
   const tasks = await DeliveryTask.find({
     rentalId,
     status: { $nin: ['delivered', 'returned', 'cancelled'] },
-  }).session(session)
+  }).select('+otp').session(session)
   for (const task of tasks) {
     await User.updateOne(
       { _id: task.assignedPartner, activeDeliveryTask: task._id },
       { $unset: { activeDeliveryTask: 1 } },
       { session },
     )
+    const pendingCode = task.otp?.id
     task.status = 'cancelled'
     task.otp = undefined
-    task.history.push({ status: 'cancelled', action: 'booking.cancelled', at: new Date() })
+    task.sharing = false
+    task.history.push({ status: 'cancelled', action: `booking.${reason}`, at: new Date() })
     await task.save({ session })
+    if (pendingCode) await removeHandoverOtp(pendingCode, session)
+    if (task.assignedPartner)
+      await Notification.create([{
+        userId: task.assignedPartner, requestId: task.rentalId, type: 'delivery', link: 'requests',
+        title: 'Trip cancelled',
+        body: reason === 'disputed'
+          ? 'This booking is under review, so the trip was cancelled. You are free to accept other requests.'
+          : 'The booking for this trip was cancelled. You are free to accept other requests.',
+      }], { session })
   }
+  await clearOffers(tasks.map((task) => task._id), session)
+  await DeliveryLocation.deleteMany({ rentalId }, { session })
+}
+
+// Stages where the rider has accepted but not yet taken custody of anything.
+const releasable = {
+  delivery: ['assigned', 'heading_to_shop', 'arrived_at_shop'],
+  return: ['return_pickup', 'heading_to_customer'],
+}
+
+// A rider who cannot complete a trip before collecting the items (or the shop or an admin on
+// their behalf) hands it back; the search restarts without that rider so the booking is not stuck.
+export async function releaseTask(id, actor) {
+  if (!['delivery_partner', 'rental_shop', 'admin'].includes(actor.role))
+    throw fail(403, 'RELEASE_FORBIDDEN', 'Only the rider, the shop or an administrator can release this trip.')
+  let released
+  await requireTransactions()
+  await mongoose.connection.transaction(async (session) => {
+    const task = await getTask(id, actor, session)
+    if (!assigned(task, actor) && !owned(task, actor))
+      throw fail(403, 'RELEASE_FORBIDDEN', 'Only the assigned rider, the shop or an administrator can release this trip.')
+    if (!task.assignedPartner || !releasable[task.direction].includes(task.status))
+      throw fail(409, 'IN_CUSTODY', 'The rider already has the items. Complete the handover instead.')
+    const rental = await activeRental(task, session)
+    const riderId = task.assignedPartner
+    const byRider = assigned(task, actor)
+    const pendingCode = task.otp?.id
+    const now = new Date()
+    task.status = 'available'
+    task.assignedPartner = null
+    task.acceptedAt = undefined
+    task.sharing = false
+    task.otp = undefined
+    task.offeredPartnerIds = []
+    task.declinedPartnerIds = [...task.declinedPartnerIds, riderId]
+    task.search = { state: 'searching', radiusMeters: SEARCH_RADII[0], round: 0, startedAt: now, nextExpansionAt: now }
+    task.history.push(history(actor, 'available', 'delivery.released'))
+    await task.save({ session })
+    if (pendingCode) await removeHandoverOtp(pendingCode, session)
+    await User.updateOne({ _id: riderId, activeDeliveryTask: task._id }, { $unset: { activeDeliveryTask: 1 }, $inc: { __v: 1 } }, { session })
+    for (const item of rental.items.filter((i) => task.productIds.some((pid) => same(pid, i.productId)))) {
+      item.assignedPartner = undefined
+      item.deliveryStatus = task.direction === 'delivery' ? 'assigned' : 'return_pickup'
+    }
+    rental.statusHistory.push({ status: rental.status, by: actor._id, action: 'delivery.released',
+      note: byRider ? 'The rider released the trip before collection.' : 'The trip was released from its rider before collection.' })
+    await rental.save({ session })
+    await DeliveryLocation.deleteMany({ rentalId: rental._id, productId: { $in: task.productIds } }, { session })
+    const recipients = [task.customerId, task.providerId, riderId].filter((userId) => !same(userId, actor._id))
+    await Notification.insertMany(recipients.map((userId) => ({
+      userId, requestId: task.rentalId, type: 'delivery', link: 'requests',
+      title: same(userId, riderId) ? 'Trip released' : 'Finding another rider',
+      body: same(userId, riderId)
+        ? 'This trip was released from you before collection. You are free to accept other requests.'
+        : 'The assigned rider could not complete this trip. We are searching for another nearby rider.',
+    })), { session })
+    released = task._id
+  })
+  await broadcastAvailableTasks()
+  return { message: 'Trip released. We are finding another rider.', taskId: released }
+}
+
+// Lets a customer whose collection nobody accepted return the items themselves instead.
+// Only possible before a rider accepts; the collection charge comes off the deposit again.
+export async function cancelReturnCollection(rentalId, actor) {
+  if (actor.role !== 'user') throw fail(403, 'CUSTOMER_REQUIRED', 'Only the booking customer can change the return.')
+  await requireTransactions()
+  await mongoose.connection.transaction(async (session) => {
+    const rental = await RentalRequest.findOne({ _id: validId(rentalId), customerId: actor._id }).session(session)
+    if (!rental || rental.status !== 'active' || rental.returnMethod !== 'partner')
+      throw fail(409, 'NO_COLLECTION', 'This rental has no partner collection to cancel.')
+    const tasks = await DeliveryTask.find({ rentalId: rental._id, direction: 'return' }).session(session)
+    if (tasks.some((task) => task.status !== 'available' || task.assignedPartner))
+      throw fail(409, 'RIDER_ASSIGNED', 'A rider has already accepted this collection. Hand the items to the rider.')
+    await clearOffers(tasks.map((task) => task._id), session)
+    // Unaccepted collections hold no handover record, and removing them lets a later request start fresh.
+    await DeliveryTask.deleteMany({ _id: { $in: tasks.map((task) => task._id) } }, { session })
+    const refunded = rental.payment.adjustments
+      .filter((adjustment) => adjustment.type === 'return_collection')
+      .reduce((sum, adjustment) => sum + Number(adjustment.amount || 0), 0)
+    rental.payment.adjustments = rental.payment.adjustments.filter((adjustment) => adjustment.type !== 'return_collection')
+    rental.returnMethod = undefined
+    rental.returnDestination = undefined
+    rental.deliveryReturnRequestedAt = undefined
+    for (const item of rental.items.filter((i) => i.decision === 'accepted'))
+      item.deliveryStatus = rental.deliveryMethod === 'partner' ? 'delivered' : 'assigned'
+    rental.statusHistory.push({
+      status: rental.status,
+      by: actor._id,
+      action: 'return.collection_cancelled',
+      note: refunded ? `Customer chose self return. Collection charge of LKR ${refunded} released.` : 'Customer chose self return.',
+    })
+    await rental.save({ session })
+  })
+  return { message: 'Collection cancelled. Return the items to the shop yourself; any collection charge was released.' }
 }

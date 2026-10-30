@@ -5,6 +5,8 @@ import { sendAccountOtp } from '../../config/mailer.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { AccountOtp } from '../otp/account-otp.model.mjs'
 import { mapsKey } from '../delivery/delivery-quote.service.mjs'
+import { createSession } from '../../middleware/auth.mjs'
+import { identityRate } from '../identity/identity-security.service.mjs'
 
 import {
   otpSecret,
@@ -13,11 +15,8 @@ import {
   consumeAccountOtp,
 } from '../otp/account-otp.service.mjs'
 
+// Every signed-in role manages its own name, contact details and password with the same checks.
 export const sendAccountCode = async (req, res) => {
-  if (req.user.role !== 'user')
-    return res
-      .status(403)
-      .json({ message: 'Customer account security is only available to customer accounts.' })
   const purpose = req.body.purpose
   if (!['profile_update', 'password_change'].includes(purpose))
     return res.status(400).json({ message: 'Choose a valid account change to verify.' })
@@ -54,10 +53,6 @@ export const sendAccountCode = async (req, res) => {
 }
 
 export const sendEmailChangeCode = async (req, res) => {
-  if (req.user.role !== 'user')
-    return res
-      .status(403)
-      .json({ message: 'Customer account settings are only available to customer accounts.' })
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return res.status(400).json({ message: 'Enter a valid new email address.' })
@@ -110,10 +105,6 @@ export const rejectLegacyProfileChange = (_req, res) =>
   })
 
 export const updateProfile = async (req, res) => {
-  if (req.user.role !== 'user')
-    return res
-      .status(403)
-      .json({ message: 'Customer account settings are only available to customer accounts.' })
   const username = typeof req.body.username === 'string' ? req.body.username.trim() : ''
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : ''
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
@@ -184,28 +175,32 @@ export const updateProfile = async (req, res) => {
 }
 
 export const updatePassword = async (req, res) => {
-  if (req.user.role !== 'user')
-    return res
-      .status(403)
-      .json({ message: 'Customer account settings are only available to customer accounts.' })
   const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : ''
   if (newPassword.length < 10 || newPassword.length > 128)
     return res.status(400).json({ message: 'Choose a password between 10 and 128 characters.' })
+  await identityRate(req.user._id, 'password-change', 10)
   await verifyAccountChange(req, 'password_change')
   const account = await User.findById(req.user._id)
   if (await bcrypt.compare(newPassword, account.password))
     return res
       .status(400)
       .json({ message: 'Choose a new password that differs from your current password.' })
-  account.password = await bcrypt.hash(newPassword, 12)
-  await account.save()
+  // Bumping sessionVersion signs out every other device; this one gets a fresh session.
+  const saved = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { password: await bcrypt.hash(newPassword, 12) }, $inc: { sessionVersion: 1 } },
+    { returnDocument: 'after' },
+  ).select('+sessionVersion')
   recordAudit(req, {
     action: 'account.password.updated',
     entityType: 'user',
     entityId: req.user._id,
-    summary: 'Changed account password.',
+    summary: 'Changed account password and signed out other sessions.',
   })
-  res.json({ message: 'Password changed successfully.' })
+  res.json({
+    message: 'Password changed. Other devices have been signed out.',
+    token: createSession(saved._id, saved.sessionVersion),
+  })
 }
 
 export const rejectLegacyAddressChange = (_req, res) =>

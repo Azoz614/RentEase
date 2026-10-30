@@ -2,6 +2,9 @@ import { afterEach, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import mongoose from 'mongoose'
 import { connectDB } from '../src/config/db.js'
+import { DeliveryTask } from '../src/modules/delivery/delivery-task.model.mjs'
+import { PartnerPresence } from '../src/modules/delivery/partner-presence.model.mjs'
+import { Notification } from '../src/modules/notifications/notification.model.mjs'
 
 const originalUri = process.env.MONGO_URI
 const originalDatabase = mongoose.connection.db
@@ -15,6 +18,9 @@ afterEach(() => {
 function installDatabase(hello) {
   process.env.MONGO_URI = 'mongodb://example-user:private-test-password@localhost:27017/rentease'
   const connect = mock.method(mongoose, 'connect', async () => mongoose)
+  // connectDB builds these indexes; without a real connection init() would wait forever.
+  for (const model of [DeliveryTask, PartnerPresence, Notification])
+    mock.method(model, 'init', async () => {})
   mongoose.connection.db = { admin: () => ({ command: async (command) => {
     assert.deepEqual(command, { hello: 1 })
     return hello

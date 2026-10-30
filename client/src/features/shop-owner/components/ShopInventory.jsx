@@ -5,8 +5,9 @@ export default function ShopInventory({
   busy,
   search,
   setSearch,
-  setSection,
+  onAddListing,
   toggleProduct,
+  editPhotos,
   visibleProducts,
 }) {
   return (
@@ -16,8 +17,8 @@ export default function ShopInventory({
           <small className="workspace-kicker">PRODUCT CATALOG</small>
           <h2>Manage your listings</h2>
         </div>
-        <button className="owner-primary" onClick={() => setSection('add')}>
-          <UiIcon name="plus" size={17} /> New listing
+        <button className="owner-primary" onClick={onAddListing}>
+          <UiIcon name="plus" size={17} /> Add listing
         </button>
       </div>
       <div className="inventory-toolbar">
@@ -58,6 +59,9 @@ export default function ShopInventory({
                 </div>
                 <button disabled={busy} onClick={() => toggleProduct(product)}>
                   {product.active ? 'Pause listing' : 'Publish listing'}
+                </button>
+                <button disabled={busy} onClick={() => editPhotos(product)}>
+                  Edit photos ({product.photos?.length || 0})
                 </button>
               </div>
             </article>

@@ -40,7 +40,7 @@
   gap: 10px;
   align-items: center;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   margin-bottom: 30px;
 }
 .cr-breadcrumb button {
@@ -63,7 +63,7 @@
 .cr-eyebrow {
   display: block;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.15em;
 }
@@ -76,7 +76,7 @@
 }
 .cr-heading p {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--cr-muted);
   line-height: 1.7;
 }
@@ -171,7 +171,7 @@
 .cr-overview small {
   display: block;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 5px;
   white-space: nowrap;
 }
@@ -181,7 +181,7 @@
   gap: 12px;
   margin: 0 0 0 22px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .cr-overview > p > svg {
@@ -189,7 +189,7 @@
 }
 .cr-overview > p b {
   display: block;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 750;
   margin-bottom: 2px;
   color: var(--re-muted);
@@ -242,7 +242,7 @@
   border-radius: 5px;
   background: #dfe7ed;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   min-width: 19px;
 }
 .cr-filters button[aria-pressed='true'] > span {
@@ -269,7 +269,7 @@
   color: var(--cr-ink);
   background: none;
   font: inherit;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .cr-search:focus-within {
   border-color: #6990ad;
@@ -300,14 +300,14 @@
   align-items: center;
   gap: 7px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.05em;
   font-weight: 750;
   flex-wrap: wrap;
 }
 .cr-booking-id > small {
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 450;
   margin-left: 5px;
   letter-spacing: 0;
@@ -321,7 +321,7 @@
   border-radius: 99px;
   color: #607385;
   background: #f0f4f7;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .cr-status > i {
@@ -407,7 +407,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--re-muted);
   margin: 0;
@@ -437,12 +437,12 @@
 .cr-dates small {
   display: block;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   margin-bottom: 4px;
 }
 .cr-dates b {
   display: block;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 650;
   line-height: 1.5;
 }
@@ -482,7 +482,7 @@
   border-radius: 50%;
   color: var(--re-muted);
   background: #f7f9fb;
-  font-size: 10px;
+  font-size: 12px;
   margin-bottom: 9px;
 }
 .cr-progress .is-complete .cr-progress-dot {
@@ -501,7 +501,7 @@
 }
 .cr-progress b {
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1.5;
 }
@@ -513,7 +513,7 @@
 }
 .cr-progress small {
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   margin-top: 4px;
   line-height: 1.5;
   padding-right: 5px;
@@ -523,13 +523,13 @@
   align-items: center;
   gap: 7px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .cr-fulfilment small {
   margin-left: auto;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   background: #f0f7f2;
   padding: 3px 6px;
   border-radius: 5px;
@@ -555,7 +555,7 @@
   color: var(--re-muted);
 }
 .cr-next-step .cr-eyebrow {
-  font-size: 8px;
+  font-size: 10.5px;
   letter-spacing: 0.13em;
 }
 .cr-next-step h3 {
@@ -568,7 +568,7 @@
 .cr-next-step > p {
   color: var(--re-muted);
   line-height: 1.85;
-  font-size: 11px;
+  font-size: 12.5px;
   margin: 0 0 14px;
 }
 .cr-next-step > .cr-button {
@@ -582,7 +582,7 @@
   margin-top: auto;
   padding-top: 10px;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .cr-tone-green {
@@ -621,7 +621,7 @@
 .cr-costs small {
   display: block;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   margin-bottom: 5px;
 }
 .cr-costs b {
@@ -634,7 +634,7 @@
 .cr-costs div > span {
   display: block;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   margin-top: 5px;
   line-height: 1.6;
 }
@@ -682,7 +682,7 @@
   cursor: pointer;
   list-style: none;
   padding: 13px 24px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--re-muted);
 }
@@ -705,7 +705,7 @@
   min-width: 0;
 }
 .cr-detail-content h3 {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-ink);
   margin: 7px 0 15px;
   font-weight: 750;
@@ -720,7 +720,7 @@
   padding: 8px 0;
   border-bottom: 1px solid #e8eff4;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .cr-detail-content dt {
@@ -729,7 +729,7 @@
 .cr-detail-content dt small {
   display: block;
   color: var(--re-muted);
-  font-size: 9px;
+  font-size: 11px;
   max-width: 200px;
 }
 .cr-detail-content dd {
@@ -738,7 +738,7 @@
   white-space: nowrap;
 }
 .cr-detail-content section > p {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
   color: var(--re-muted);
 }
@@ -751,12 +751,12 @@
 }
 .cr-record b {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .cr-record small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
   margin-top: 5px;
   line-height: 1.6;
@@ -766,7 +766,7 @@
   color: var(--re-muted);
 }
 .cr-delivery-record p {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .cr-email-guide {
@@ -801,7 +801,7 @@
   letter-spacing: -0.2px;
 }
 .cr-email-guide p {
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.9;
   color: var(--re-muted);
   margin: 0;
@@ -812,7 +812,7 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
   margin-left: auto;
 }
@@ -825,7 +825,7 @@
   border-radius: 10px;
   padding: 13px 15px;
   margin-bottom: 18px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   color: #356c50;
   background: #f0f8f3;
@@ -853,7 +853,7 @@
   background: none;
   color: inherit;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 750;
 }
 .cr-empty {
@@ -884,7 +884,7 @@
 }
 .cr-empty p {
   max-width: 360px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--re-muted);
   margin: 0 0 25px;
@@ -980,7 +980,7 @@
   margin: 9px 0 11px;
 }
 .cr-action-dialog > p {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--re-muted);
   margin: 0 0 21px;
@@ -998,7 +998,7 @@
   gap: 12px;
   padding: 12px 0;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.7;
 }
 .cr-dialog-breakdown > div:last-child {
@@ -1006,7 +1006,7 @@
   color: var(--re-ink);
 }
 .cr-dialog-breakdown b {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
   color: var(--re-ink);
@@ -1026,7 +1026,7 @@
   color: var(--re-muted);
   border: 1px solid #f0e5cd;
   background: #fffbf1;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
 }
 .cr-sandbox-note svg {
@@ -1058,7 +1058,7 @@
   border-radius: 10px;
   background: #f6f9fb;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.9;
 }
 .cr-action-dialog > .cr-dialog-error {
@@ -1068,7 +1068,7 @@
   border-radius: 8px;
   color: #964d45;
   background: #fff2ef;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .cr-spinner {
   width: 14px;
@@ -1164,7 +1164,7 @@
   }
   .cr-heading > .cr-button {
     min-height: 36px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-card-layout {
     grid-template-columns: 1fr;
@@ -1225,14 +1225,14 @@
   }
   .cr-breadcrumb {
     margin-bottom: 23px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-heading h1 {
     font-size: 30px;
     letter-spacing: -0.9px;
   }
   .cr-heading p {
-    font-size: 12px;
+    font-size: 13px;
   }
   .cr-overview {
     padding: 15px 10px;
@@ -1258,19 +1258,19 @@
     font-size: 22px;
   }
   .cr-overview small {
-    font-size: 9px;
+    font-size: 11px;
   }
   .cr-overview > div:first-child {
     padding-left: 5px;
   }
   .cr-overview > p {
-    font-size: 9px;
+    font-size: 11px;
     gap: 7px;
     margin-top: 14px;
     padding: 12px 4px 0;
   }
   .cr-overview > p b {
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-filters {
     width: 100%;
@@ -1281,11 +1281,11 @@
   .cr-filters button {
     flex: 1;
     padding: 8px 5px;
-    font-size: 10px;
+    font-size: 12px;
     gap: 4px;
   }
   .cr-filters button > span {
-    font-size: 8px;
+    font-size: 10.5px;
     min-width: 15px;
     padding: 2px 3px;
   }
@@ -1302,10 +1302,10 @@
   .cr-booking-id > small {
     width: 100%;
     margin: 0;
-    font-size: 9px;
+    font-size: 11px;
   }
   .cr-status {
-    font-size: 9px;
+    font-size: 11px;
     padding: 5px 8px;
   }
   .cr-card-layout {
@@ -1319,7 +1319,7 @@
     font-size: 16px;
   }
   .cr-item p {
-    font-size: 9px;
+    font-size: 11px;
   }
   .cr-dates {
     padding: 11px;
@@ -1332,19 +1332,19 @@
     display: none;
   }
   .cr-dates b {
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-progress {
     margin: 22px 0 17px;
   }
   .cr-progress b {
-    font-size: 9px;
+    font-size: 11px;
   }
   .cr-progress small {
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .cr-fulfilment {
-    font-size: 9px;
+    font-size: 11px;
     flex-wrap: wrap;
   }
   .cr-next-step {
@@ -1355,7 +1355,7 @@
     font-size: 15px;
   }
   .cr-next-step > p {
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-card-footer {
     padding: 17px 15px;
@@ -1372,7 +1372,7 @@
     font-size: 14px;
   }
   .cr-costs div > span {
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .cr-booking-actions {
     width: 100%;
@@ -1399,15 +1399,15 @@
     height: 19px;
   }
   .cr-email-guide h2 {
-    font-size: 12px;
+    font-size: 13px;
   }
   .cr-email-guide p {
-    font-size: 10px;
+    font-size: 12px;
   }
   .cr-notice,
   .cr-error {
     padding: 11px;
-    font-size: 11px;
+    font-size: 12.5px;
     align-items: flex-start;
   }
   .cr-error {

@@ -2,6 +2,9 @@ import { Router } from 'express'
 import mongoose from 'mongoose'
 import { requireUser } from '../../middleware/auth.mjs'
 import { RentalRequest } from './rental.model.mjs'
+import { Product } from '../products/product.model.mjs'
+import { Notification } from '../notifications/notification.model.mjs'
+import { currentNotificationFilter } from '../notifications/handover-notifications.service.mjs'
 import {
   initiateVerification,
   verifyHandover,
@@ -16,26 +19,40 @@ import {
 } from './handover.service.mjs'
 
 const fields =
-  'customerId items startDate endDate status statusHistory createdAt updatedAt total deliveryMethod returnMethod selfReturns.providerId selfReturns.status selfReturns.verifiedAt pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection pickupVerifiedBy returnVerifiedAt returnVerifiedBy cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt payment.status'
+  'customerId items startDate endDate status statusHistory createdAt updatedAt total deliveryMethod deliveryWorkflowVersion returnMethod shipments deliveryDestination address selfReturns.providerId selfReturns.status selfReturns.verifiedAt selfReturns.initiatedBy selfReturns.recipientId selfReturns.verifiedBy pickupVerifiedAt pickupCustomerVerifiedAt readyForPickupAt requiresPickupPreparation requiresReturnConfirmation returnOtpVerifiedAt returnInspection pickupVerifiedBy returnVerifiedAt returnVerifiedBy cancelledAt cancellationReason handover.pickup.status handover.pickup.sentAt handover.pickup.expiresAt handover.return.status handover.return.sentAt handover.return.expiresAt payment.status payment.depositHeld payment.depositRefunded payment.refundedAt payment.adjustments.type payment.adjustments.amount payment.adjustments.note payment.adjustments.createdAt'
 const statusLabels = { confirmed: 'BOOKED', active: 'ON_RENTAL', returned: 'RETURNED' }
-const serialize = ({ handover, ...rental }) => ({
-  ...rental,
-  pickupVerification: pickupWorkflow({ ...rental, handover }),
-  returnVerification: returnWorkflow({ ...rental, handover }),
-  lifecycleStatus: statusLabels[rental.status] || String(rental.status || 'pending').toUpperCase(),
-  customerId: rental.customerId
-    ? {
-        _id: rental.customerId._id,
-        username: rental.customerId.username,
-        phone: rental.customerId.phone,
-        maskedEmail: rental.customerId.email ? maskEmail(rental.customerId.email) : '',
-      }
-    : null,
-})
+// Shops only ever load bookings that contain one of their items.
+const scoped = (id, actor) => ({ _id: id, ...(actor.role === 'rental_shop' && { 'items.providerId': actor._id }) })
+const serialize = ({ handover, ...rental }, actor) => {
+  const items = actor.role === 'rental_shop' ? rental.items.filter((i) => String(i.providerId) === String(actor._id)) : rental.items
+  // In a booking shared with other shops, a shop sees its own share, not the whole total.
+  const shared = items.length < rental.items.length
+  return {
+    ...rental,
+    items,
+    // Deposits are settled for the whole booking, so a shop sharing it only sees the payment status.
+    ...(shared && { total: items.reduce((sum, i) => sum + Number(i.rentalAmount || 0), 0), shared: true,
+      payment: rental.payment && { status: rental.payment.status } }),
+    pickupCompleted: items.length > 0 && items.every((i) => i.pickupVerifiedAt),
+    readyForPickupAt: rental.readyForPickupAt || (items.length && items.every((i) => i.pickupReadyAt) ? items[0].pickupReadyAt : null),
+    shipments: rental.shipments?.filter((s) => actor.role === 'admin' || String(s.providerId) === String(actor._id)),
+    pickupVerification: pickupWorkflow({ ...rental, handover }),
+    returnVerification: returnWorkflow({ ...rental, handover }),
+    lifecycleStatus: statusLabels[rental.status] || String(rental.status || 'pending').toUpperCase(),
+    customerId: rental.customerId
+      ? {
+          _id: rental.customerId._id,
+          username: rental.customerId.username,
+          phone: rental.customerId.phone,
+          maskedEmail: rental.customerId.email ? maskEmail(rental.customerId.email) : '',
+        }
+      : null,
+  }
+}
 const populate = (query) =>
   query
     .populate('customerId', 'username email phone')
-    .populate('pickupVerifiedBy returnVerifiedBy statusHistory.by', 'username')
+    .populate('pickupVerifiedBy returnVerifiedBy statusHistory.by statusHistory.senderId statusHistory.recipientId', 'username')
 const idCheck = (req, res, next) =>
   mongoose.isValidObjectId(req.params.id)
     ? next()
@@ -55,7 +72,7 @@ export function createRentalVerificationRouter(dependencies = {}) {
   router.use('/rentals/:id', idCheck, async (req, res, next) => {
     if (req.user.role === 'rental_shop') {
       const rental = await RentalRequest.findById(req.params.id).select('items.providerId').lean()
-      if (!rental || !rental.items.length || !rental.items.every((i) => String(i.providerId) === String(req.user._id)))
+      if (!rental || !rental.items.some((i) => String(i.providerId) === String(req.user._id)))
         return res.status(404).json({ message: 'Rental not found for this shop.' })
     }
     next()
@@ -69,6 +86,7 @@ export function createRentalVerificationRouter(dependencies = {}) {
         'pending',
         'confirmed',
         'active',
+        'return_in_transit',
         'returned',
         'completed',
         'cancelled',
@@ -78,9 +96,8 @@ export function createRentalVerificationRouter(dependencies = {}) {
       return res.status(400).json({ message: 'Choose a valid rental status.' })
     const page = Math.max(1, Math.min(10000, Number.parseInt(req.query.page, 10) || 1))
     const staffScope = {
-      $and: [{ $or: [{ deliveryWorkflowVersion: { $ne: 2 } }, { returnMethod: 'pickup' }] }],
       ...(req.user.role === 'rental_shop'
-        ? { 'items.providerId': req.user._id, items: { $not: { $elemMatch: { providerId: { $ne: req.user._id } } } } }
+        ? { 'items.providerId': req.user._id }
         : {}),
     }
     const filter = { ...staffScope, ...(status ? { status } : {}) }
@@ -118,7 +135,7 @@ export function createRentalVerificationRouter(dependencies = {}) {
       return result
     }, {})
     res.json({
-      rentals: rentals.map(serialize),
+      rentals: rentals.map((r) => serialize(r, req.user)),
       total,
       page,
       pages: Math.max(1, Math.ceil(total / 20)),
@@ -131,17 +148,26 @@ export function createRentalVerificationRouter(dependencies = {}) {
     })
   })
   router.get('/rentals/:id', idCheck, async (req, res) => {
-    const rental = await populate(RentalRequest.findById(req.params.id).select(fields)).lean()
+    const rental = await populate(RentalRequest.findOne(scoped(req.params.id, req.user)).select(fields)).lean()
     if (!rental) return res.status(404).json({ message: 'Rental not found.' })
-    res.json({ rental: serialize(rental) })
+    const products = await Product.find({ _id: { $in: rental.items.map((i) => i.productId) } }).select('photos category').lean()
+    const notifications = await Notification.find({ requestId: rental._id, userId: req.user._id, ...currentNotificationFilter() })
+      .select('title body createdAt expiresAt').sort({ createdAt: -1 }).limit(30).lean()
+    const view = serialize(rental, req.user)
+    res.json({ rental: { ...view, notifications,
+      items: view.items.map((item) => ({ ...item, image: products.find((p) => String(p._id) === String(item.productId))?.photos?.[0] || null })) } })
   })
   router.get('/rentals/:id/history', idCheck, async (req, res) => {
-    const rental = await RentalRequest.findById(req.params.id)
-      .select('statusHistory')
+    const rental = await RentalRequest.findOne(scoped(req.params.id, req.user))
+      .select('statusHistory items.providerId')
       .populate('statusHistory.by', 'username')
       .lean()
     if (!rental) return res.status(404).json({ message: 'Rental not found.' })
-    res.json({ history: rental.statusHistory || [] })
+    // Other shops' item decisions (and their reasons) stay private in a shared booking.
+    const mine = (entry) => String(entry.by?._id || entry.by) === String(req.user._id)
+    const history = (rental.statusHistory || []).filter((entry) =>
+      req.user.role === 'admin' || !String(entry.action || '').startsWith('booking.item.') || mine(entry))
+    res.json({ history })
   })
   router.post('/rentals/:id/verification/:type/send', idCheck, async (req, res) => {
     res.json(

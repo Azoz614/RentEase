@@ -1,0 +1,33 @@
+{
+  // RentEase web app on Cloudflare Workers (static assets + API forwarding).
+  // Build first (`npm run build`), then deploy with an environment:
+  // `npx wrangler deploy --env staging|production`. Deploy the API Worker first.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "rentease-web-dev",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/uploads/*"]
+  },
+  "observability": { "enabled": true },
+  // Public *.workers.dev URL on; per-version preview URLs off.
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [{ "binding": "API", "service": "rentease-api-dev" }],
+
+  "env": {
+    "staging": {
+      "name": "rentease-web-staging",
+      "services": [{ "binding": "API", "service": "rentease-api-staging" }]
+    },
+    "production": {
+      "name": "rentease-web",
+      "services": [{ "binding": "API", "service": "rentease-api" }]
+      // After adding your domain to Cloudflare, serve production from it:
+      // "routes": [{ "pattern": "rentease.example.com", "custom_domain": true }]
+    }
+  }
+}

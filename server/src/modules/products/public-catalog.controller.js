@@ -1,11 +1,10 @@
-import mongoose from 'mongoose'
+import { listProductReviewPage } from './product-reviews.controller.mjs'
 import { Product } from './product.model.mjs'
-import { RentalReview } from './rental-review.model.mjs'
 import { RentalPackage } from './rental-package.model.mjs'
-import { inventoryAvailability, availabilityView } from './availability.service.mjs'
+import { inventoryAvailability, availabilityView, bookableProviders } from './availability.service.mjs'
 
 export const listPublicProducts = async (_req, res) => {
-  const products = await Product.find({ active: true })
+  const products = await Product.find({ active: true, ...(await bookableProviders()) })
     .select(
       'title category description dailyRate hourlyRate weeklyRate longRentalDiscountPercent depositAmount ratingAverage ratingCount specifications location photos providerId leadTimeHours createdAt',
     )
@@ -44,16 +43,4 @@ export const listPublicPackages = async (_req, res) => {
   })
 }
 
-export const listPublicReviews = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.productId))
-    return res.status(400).json({ message: 'Choose a valid listing.' })
-  const reviews = await RentalReview.find({
-    productId: req.params.productId,
-    direction: 'customer_to_owner',
-  })
-    .populate('authorId', 'username')
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean()
-  res.json({ reviews })
-}
+export const listPublicReviews = listProductReviewPage

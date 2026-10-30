@@ -21,11 +21,11 @@ export function IdentityStatusCard({ identity, onOpen, onAddresses, hideAction =
         />
       </span>
       <div>
-        <span className="iv-kicker">YOUR RENTAL PASSPORT</span>
         <h2>{titles[status]}</h2>
         <p>
           {status === 'approved'
             ? 'Your NIC is approved. Keep your address book up to date before requesting items.'
+            : status === 'pending' ? 'You can keep browsing Explore while an administrator reviews your NIC. Rental requests open after approval.'
             : identity?.reviewNote ||
               'Your full legal name, NIC photos and residential address need administrator approval before rental requests.'}
         </p>
@@ -40,7 +40,7 @@ export function IdentityStatusCard({ identity, onOpen, onAddresses, hideAction =
                 ? 'View progress'
                 : ['rejected', 'resubmission_required'].includes(status)
                   ? 'Review feedback'
-                  : 'Complete Verification'}
+                  : 'Verify NIC'}
           </button>
         )}
         {onAddresses && (

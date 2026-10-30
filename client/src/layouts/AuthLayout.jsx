@@ -1,55 +1,44 @@
 import { BrandMark } from '../components/ui/BrandMark.jsx'
+import { UiIcon } from '../components/ui/UiIcon.jsx'
 import { RentalArtwork } from '../features/products/components/RentalArtwork.jsx'
+import SiteFooter from '../components/layout/SiteFooter.jsx'
 
 import '../features/auth/styles/auth.css'
 
+const highlights = ['Approved local rental shops', 'Pickup or doorstep delivery', 'ID-verified renters']
+
 export default function AuthLayout({ isRegistering, onBrowse, showLogin, showRegister, children }) {
   return (
-    <main className={`login-page${isRegistering ? ' is-registering-page' : ''}`}>
+    <>
+    <main className="login-page">
       <header className="login-nav">
-        <a className="login-brand" href="/" aria-label="RentEase home">
+        <a className="login-brand" href="/" onClick={onBrowse} aria-label="RentEase home">
           <BrandMark className="login-brand-mark" />
-          <span>
-            <b>RentEase</b>
-          </span>
+          <b>RentEase</b>
         </a>
-        <div className="login-nav-signup">
-          <a href="/" onClick={onBrowse}>
-            Browse listings
+        <nav className="login-nav-links" aria-label="Account">
+          <a href="/" onClick={onBrowse}>Browse rentals</a>
+          <a className="login-nav-cta" href={isRegistering ? '/login' : '/register'}
+            onClick={isRegistering ? showLogin : showRegister}>
+            {isRegistering ? 'Sign in' : 'Sign up'}
           </a>
-          <span>{isRegistering ? 'Already have an account?' : 'New to RentEase?'}</span>
-          <a
-            href={isRegistering ? '/login' : '/register'}
-            onClick={isRegistering ? showLogin : showRegister}
-          >
-            {isRegistering ? 'Sign in' : 'Create an account'}
-          </a>
-        </div>
+        </nav>
       </header>
 
-      <section
-        className={`login-layout${isRegistering ? ' is-registering' : ''}`}
-        aria-label="RentEase account access"
-      >
+      <section className="login-layout" aria-label="RentEase account access">
         <aside className="login-story">
-          <div className="login-story-copy">
-            <span className="login-story-kicker">TOOLS · GEAR · SPACES</span>
-            <h1>
-              The right gear.
-              <br />
-              <em>Right when you need it.</em>
-            </h1>
-            <p>
-              Rent quality equipment and everyday essentials from people and organizations in your
-              community.
-            </p>
-          </div>
+          <h1>Rent the gear you need, from shops near you.</h1>
           <RentalArtwork />
-          <div className="login-story-caption">GOOD GEAR. SHARED WELL.</div>
+          <ul className="login-highlights">
+            {highlights.map((item) => (
+              <li key={item}><UiIcon name="check" size={16} />{item}</li>
+            ))}
+          </ul>
         </aside>
-
         {children}
       </section>
     </main>
+    <SiteFooter />
+    </>
   )
 }

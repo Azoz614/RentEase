@@ -1,3 +1,4 @@
+import { listProductReviewPage } from './product-reviews.controller.mjs'
 import { validPoint, haversine } from '../maps/distance.service.mjs'
 import mongoose from 'mongoose'
 import { Product } from './product.model.mjs'
@@ -6,13 +7,14 @@ import { User } from '../users/user.model.mjs'
 import { recordAudit } from '../../services/audit.service.js'
 import { RentalReview } from './rental-review.model.mjs'
 import { RentalPackage } from './rental-package.model.mjs'
-import { inventoryAvailability, availabilityView } from './availability.service.mjs'
+import { inventoryAvailability, availabilityView, bookableProviders } from './availability.service.mjs'
 import { mapsKey } from '../delivery/delivery-quote.service.mjs'
+import { loyaltyOverview, loyaltySummary } from '../loyalty/loyalty.service.mjs'
 
 import { notify } from '../notifications/rental-notifications.service.mjs'
 
 export const listProducts = async (req, res) => {
-  const products = await Product.find({ active: true })
+  const products = await Product.find({ active: true, ...(await bookableProviders()) })
     .populate('providerId', 'username shopName shopLocation shopAddress')
     .sort({ createdAt: -1 })
     .lean()
@@ -50,13 +52,23 @@ export const listProducts = async (req, res) => {
         distanceKm,
         distanceType: 'geographic',
         estimatedDeliveryFee: null,
+        // Current reservations only (a count, never the dates), used to rank trending items.
+        bookingCount: product.rentalSlots?.length || 0,
       }
     }),
     address: req.user.defaultAddress || '',
     nic: req.user.nic || '',
     loyaltyPoints: req.user.loyaltyPoints || 0,
+    loyalty: loyaltySummary(req.user),
     mapsConfigured: Boolean(mapsKey()),
   })
+}
+
+export const getLoyalty = async (req, res) => {
+  if (req.user.role !== 'user')
+    return res.status(403).json({ message: 'Loyalty rewards are for customer accounts.' })
+  res.set('Cache-Control', 'private, no-store')
+  res.json(await loyaltyOverview(req.user))
 }
 
 export const listPackages = async (req, res) => {
@@ -168,7 +180,7 @@ export const quotePackage = async (req, res) => {
 
 export const listWishlist = async (req, res) => {
   const user = await User.findById(req.user._id).select('wishlist')
-  const products = await Product.find({ _id: { $in: user?.wishlist || [] }, active: true })
+  const products = await Product.find({ _id: { $in: user?.wishlist || [] }, active: true, ...(await bookableProviders()) })
     .populate('providerId', 'username shopName')
     .lean()
   res.json({ products })
@@ -190,19 +202,7 @@ export const removeWishlistProduct = async (req, res) => {
   res.json({ message: 'Listing removed from your wishlist.' })
 }
 
-export const listProductReviews = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.productId))
-    return res.status(400).json({ message: 'Choose a valid listing.' })
-  const reviews = await RentalReview.find({
-    productId: req.params.productId,
-    direction: 'customer_to_owner',
-  })
-    .populate('authorId', 'username')
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean()
-  res.json({ reviews })
-}
+export const listProductReviews = listProductReviewPage
 
 export const createReview = async (req, res) => {
   const { requestId, productId } = req.body
@@ -218,7 +218,10 @@ export const createReview = async (req, res) => {
   const item = request?.items.find((entry) => String(entry.productId) === String(productId))
   if (!request || !item || item.decision !== 'accepted')
     return res.status(404).json({ message: 'Completed rental item not found.' })
-  const complete = item.deliveryStatus === 'returned' || new Date(request.endDate) <= new Date()
+  // Only rentals that actually happened can be reviewed; reviews move trust scores.
+  const complete =
+    ['returned', 'completed'].includes(request.status) ||
+    (request.status !== 'cancelled' && item.deliveryStatus === 'returned')
   if (!complete)
     return res.status(409).json({ message: 'Reviews open after the rental period is complete.' })
   const isCustomer = String(request.customerId) === String(req.user._id)

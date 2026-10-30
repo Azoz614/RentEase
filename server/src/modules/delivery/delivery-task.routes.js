@@ -16,6 +16,8 @@ import {
   assignDelivery,
   quoteReturn,
   retryReturnSearch,
+  cancelReturnCollection,
+  releaseTask,
 } from './delivery-task.service.mjs'
 import { selfReturnState, sendSelfReturn, verifySelfReturn } from '../rentals/self-return.service.mjs'
 import { drivingRoute } from './delivery-quote.service.mjs'
@@ -42,6 +44,9 @@ router.post('/delivery/tasks/:id/accept', async (req, res) =>
 router.post('/delivery/tasks/:id/decline', async (req, res) =>
   res.json(await declineTask(req.params.id, req.user)),
 )
+router.post('/delivery/tasks/:id/release', async (req, res) =>
+  res.json(await releaseTask(req.params.id, req.user)),
+)
 router.post('/delivery/tasks/:id/search', async (req, res) =>
   res.json(await retryReturnSearch(req.params.id, req.user)),
 )
@@ -50,6 +55,9 @@ router.post('/delivery/rentals/:id/return', async (req, res) =>
 )
 router.post('/delivery/rentals/:id/assign', async (req, res) =>
   res.json(await assignDelivery(req.params.id, req.user)),
+)
+router.post('/delivery/rentals/:id/return/cancel', async (req, res) =>
+  res.json(await cancelReturnCollection(req.params.id, req.user)),
 )
 router.post('/delivery/rentals/:id/return/quote', async (req, res) =>
   res.json(await quoteReturn(req.params.id, req.user, req.body)),

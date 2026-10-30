@@ -9,6 +9,9 @@ import { Status } from './Status.jsx'
 import { RentalAction } from './RentalAction.jsx'
 import { useModalDismiss } from '../hooks/useModalDismiss.js'
 import { Modal } from './Modal.jsx'
+import DeliveryTaskBoard from '../../delivery-partner/components/DeliveryTaskBoard.jsx'
+import { RentalJobSummary, RentalJobCodes } from './RentalJobSummary.jsx'
+import { DepositSettlement } from './DepositSettlement.jsx'
 
 export function RentalDetails({ rental: initial, request, onClose: onDismiss, onVerify }) {
   const [onClose, closing] = useModalDismiss(onDismiss)
@@ -26,6 +29,11 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
       })
     return () => controller.abort()
   }, [initial, request])
+  const reload = async () => {
+    const result = await request(`/rentals/${initial._id}`)
+    setRental((current) => preferLatestRental(current, result.rental))
+  }
+  const updates = rental.notifications?.filter((n) => n.type !== 'handover_otp' && !n.expiresAt) || []
   const confirmation = rental.statusHistory?.find((event) => event.status === 'confirmed')
   const booked = Boolean(
     confirmation ||
@@ -58,7 +66,14 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
           <Glyph name="close" />
         </button>
       </header>
-      <Status value={rental.status} workflow={rental.pickupVerification} />
+      <RentalJobSummary rental={rental} status={<Status value={rental.status} workflow={rental.pickupVerification} />} />
+      <RentalJobCodes notifications={rental.notifications} />
+      <section className="rental-job-next" aria-label="Next shop action">
+        <span className="rental-job-next-icon"><Glyph name="shield" /></span>
+        <div><span className="rental-job-kicker">NEXT STEP</span><h3>{rental.status === 'confirmed' ? 'Prepare your handover' : rental.status === 'active' ? 'Your customer has the items' : rental.status === 'return_in_transit' ? 'The rider is bringing the return' : 'Your rental record'}</h3>
+          <p>{rental.deliveryMethod === 'partner' || rental.returnMethod === 'partner' ? 'Follow the shipment below for the next person and verification action.' : 'Each receipt is confirmed with a private code sent to the recipient.'}</p></div>
+        <RentalAction rental={rental} onVerify={onVerify} />
+      </section>
       {error && (
         <p role="alert" className="handover-feedback error">
           {error}
@@ -94,10 +109,15 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
           </p>
         </section>
       </div>
+      {rental.deliveryWorkflowVersion === 2 && <DeliveryTaskBoard api={request} role="rental_shop" rentalId={rental._id} />}
+      {updates.length > 0 && <section className="handover-history"><h3>Your private job updates</h3>
+        {updates.map((n) => <article key={n._id}><b>{n.title}</b><p>{n.body}</p><small>{date(n.createdAt)}</small></article>)}
+      </section>}
       <section className="handover-detail-items">
         <h3>Rented items</h3>
         {rental.items.map((item) => (
           <div key={item.productId}>
+            {item.image && <img className="handover-item-photo" src={item.image} alt={item.title} />}
             <span>
               {item.title}
               <small>{item.decision}</small>
@@ -106,6 +126,7 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
           </div>
         ))}
       </section>
+      <DepositSettlement rental={rental} request={request} onUpdated={reload} />
       <div className="handover-details-grid handover-verifier">
         <section>
           <h3>Pickup verified</h3>
@@ -132,6 +153,7 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
                     {date(event.at)} · {event.by?.username || 'System'}
                     {event.verificationId && ' · Email verified'}
                   </small>
+                  {event.senderId && <small>Sender: {event.senderId.username || event.senderId} · Recipient: {event.recipientId?.username || event.recipientId} · Verifier: {event.by?.username || 'Recorded'}</small>}
                 </div>
               </li>
             ))}
@@ -144,7 +166,6 @@ export function RentalDetails({ rental: initial, request, onClose: onDismiss, on
         <button className="handover-button secondary" onClick={onClose}>
           Close details
         </button>
-        <RentalAction rental={rental} onVerify={onVerify} />
       </footer>
     </Modal>
   )

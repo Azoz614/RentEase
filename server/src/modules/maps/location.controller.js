@@ -156,7 +156,7 @@ export const listDeliveryTasks = async (req, res) => {
     status: { $in: ['confirmed', 'active', 'return_in_transit', 'returned'] },
   })
     .select(
-      'customerId items status deliveryMethod deliveryWorkflowVersion shipments deliveryDestination address pickupVerifiedAt returnVerifiedAt returnOtpVerifiedAt updatedAt +handover.return',
+      'customerId items status deliveryMethod deliveryWorkflowVersion shipments deliveryDestination returnDestination address pickupVerifiedAt returnVerifiedAt returnOtpVerifiedAt updatedAt +handover.return',
     )
     .sort({ updatedAt: -1 })
     .limit(100)
@@ -205,9 +205,12 @@ export const listDeliveryTasks = async (req, res) => {
             ['assigned', 'delivered', 'return_pickup'].includes(item.deliveryStatus),
           type: returnStage(item) ? 'return' : 'delivery',
           shipment,
-          destination: rental.deliveryDestination?.location
-            ? rental.deliveryDestination
-            : { address: rental.address },
+          // A collection can be from a different address than the original delivery.
+          destination: returnStage(item) && rental.returnDestination?.location
+            ? rental.returnDestination
+            : rental.deliveryDestination?.location
+              ? rental.deliveryDestination
+              : { address: rental.address },
           partner: partner
             ? { id: partner._id, name: partner.username, phone: partner.phone || '' }
             : null,
@@ -247,8 +250,11 @@ export const getTaskRoute = async (req, res) => {
   )
     throw locationError(409, 'This task has no active route or saved location snapshot.')
   const returning = returnStage(item)
-  let origin = returning ? rental.deliveryDestination.location : shipment.origin
-  let destination = returning ? shipment.origin : rental.deliveryDestination.location
+  const customer = returning && rental.returnDestination?.location
+    ? rental.returnDestination.location
+    : rental.deliveryDestination.location
+  let origin = returning ? customer : shipment.origin
+  let destination = returning ? shipment.origin : customer
   if (req.body.origin !== undefined) {
     if (req.user.role !== 'delivery_partner' || !trackableTask(rental, item))
       throw locationError(
@@ -259,7 +265,7 @@ export const getTaskRoute = async (req, res) => {
     destination = ['assigned', 'heading_to_shop', 'arrived_at_shop'].includes(item.deliveryStatus)
       ? shipment.origin
       : ['return_pickup', 'heading_to_customer'].includes(item.deliveryStatus)
-        ? rental.deliveryDestination.location
+        ? customer
         : destination
   }
   res.json(await drivingRoute(origin, destination, true))

@@ -1,8 +1,12 @@
+import { RentalJobSummary, RentalJobCodes } from './RentalJobSummary.jsx'
 import DeliveryTaskBoard from '../../delivery-partner/components/DeliveryTaskBoard.jsx'
 import { formatCurrency as money } from '../../../utils/currency.js'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import '../styles/customer-rental-details.css'
+import '../styles/my-rentals-modern.css'
+import { notificationsChanged } from '../../notifications/hooks/useNotificationCount.js'
 import { PickupSection, CancellationRecord } from './CustomerPickup.jsx'
+import { RentalReviewSection } from './RentalReviewSection.jsx'
 import {
   customerRentalStatus,
   hasRentalPayment as paid,
@@ -104,6 +108,8 @@ export default function CustomerRentalDetails({
         latestRental.current = fresh
         summaryVersion.current = fresh.updatedAt
         setRental(fresh)
+        const unreadIds = fresh.notifications?.filter((notice) => !notice.readAt && /^[a-f\d]{24}$/i.test(String(notice._id))).map((notice) => notice._id) || []
+        if (unreadIds.length) api('/api/inbox/read', { method: 'PATCH', body: JSON.stringify({ ids: unreadIds }) }).then(notificationsChanged).catch(() => {})
         setError('')
         onRentalUpdate(fresh)
       } catch (failure) {
@@ -169,11 +175,12 @@ export default function CustomerRentalDetails({
     setClosing(true)
     closeTimer.current = setTimeout(onClose, 150)
   }
+  const updates = rental?.notifications?.filter((n) => n.type !== 'handover_otp' && !n.expiresAt) || []
   const deposit = rental?.items.reduce((sum, item) => sum + Number(item.depositAmount || 0), 0) || 0
   return (
     <dialog
       ref={dialog}
-      className={`cr-rental-dialog${closing ? ' is-closing' : ''}`}
+      className={`cr-rental-dialog cr-detail-modern${closing ? ' is-closing' : ''}`}
       aria-labelledby={headingId}
       aria-modal="true"
       onCancel={(event) => {
@@ -217,23 +224,10 @@ export default function CustomerRentalDetails({
         )}
         {rental && (
           <>
-            <div className="cr-detail-intro">
-              <div>
-                <span className={`cr-status cr-status-${rental.status}`}>
-                  <i />
-                  {customerRentalStatus(rental)}
-                </span>
-                <p>
-                  {rental.items.length} {rental.items.length === 1 ? 'item' : 'items'} ·{' '}
-                  {duration(rental)} ·{' '}
-                  {rental.deliveryMethod === 'partner' ? 'Partner delivery' : 'In-person pickup'}
-                </p>
-              </div>
-              <span className="cr-detail-secure">
-                <Icon name="shield" size={16} />
-                Email-verified handovers
-              </span>
-            </div>
+            <RentalJobSummary rental={rental} meta={duration(rental)} status={<span className={`cr-status cr-status-${rental.status}`}><i />{customerRentalStatus(rental)}</span>} />
+            <RentalJobCodes notifications={rental.notifications} />
+            <LifecycleTimeline rental={rental} />
+            <RentalReviewSection api={api} rental={rental} onSaved={() => refresh()} />
             {rental.deliveryWorkflowVersion === 2 && <DeliveryTaskBoard api={api} role="user" rentalId={rental._id} onReturn={() => onReturn(rental)} />}
             <PickupSection rental={rental} onVerify={onPickup} busy={busy} />
             {rental.status === 'active' && !rental.returnVerifiedAt && (
@@ -273,7 +267,6 @@ export default function CustomerRentalDetails({
               </section>
             )}
             <CancellationRecord rental={rental} />
-            <LifecycleTimeline rental={rental} />
             <section className="cr-detail-section">
               <div className="cr-detail-section-title">
                 <span className="cr-detail-section-icon">
@@ -281,7 +274,7 @@ export default function CustomerRentalDetails({
                 </span>
                 <div>
                   <h3>Your rental items</h3>
-                  <p>Booked item names and prices, with current catalog details.</p>
+                  <p>Your booked items, photos and rental prices.</p>
                 </div>
               </div>
               <div className="cr-detail-products">
@@ -316,6 +309,8 @@ export default function CustomerRentalDetails({
                       rental.returnVerifiedAt ? date(rental.returnVerifiedAt) : 'Not verified yet'
                     }
                   />
+                  <Info label="Pickup method" value={rental.deliveryMethod === 'partner' ? 'Delivery partner' : 'Self pickup'} />
+                  <Info label="Return method" value={rental.returnMethod === 'partner' ? 'Rider collection' : rental.returnMethod === 'pickup' ? 'Self return' : 'Choose when ready'} />
                   <Info label="Current stage" value={customerRentalStatus(rental)} />
                   {rental.delivery?.address && (
                     <Info label="Delivery address" value={rental.delivery.address} />
@@ -363,7 +358,7 @@ export default function CustomerRentalDetails({
                   {(rental.payment?.adjustments || []).map((adjustment, index) => (
                     <Info
                       key={index}
-                      label={`${adjustment.type === 'late_fee' ? 'Late fee' : 'Damage fee'}${adjustment.note ? ` · ${adjustment.note}` : ''}`}
+                      label={`${({ late_fee: 'Late fee', damage_fee: 'Damage fee', return_collection: 'Return collection' }[adjustment.type] || 'Fee')}${adjustment.note ? ` · ${adjustment.note}` : ''}`}
                       value={money(adjustment.amount)}
                     />
                   ))}
@@ -381,10 +376,10 @@ export default function CustomerRentalDetails({
                 )}
               </section>
             </div>
-            {rental.notifications?.length > 0 && (
+            {updates.length > 0 && (
               <section className="cr-detail-section">
                 <h3>Updates for this booking</h3>
-                {rental.notifications.map((notice) => (
+                {updates.map((notice) => (
                   <article className="cr-record" key={notice._id}>
                     <span>
                       <b>{notice.title}</b>
@@ -403,8 +398,8 @@ export default function CustomerRentalDetails({
                 <h3>Verified with you, at every handover.</h3>
                 <p>
                   {rental.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner'
-                    ? 'Shop staff verify the rider’s collection and final return codes. The rider verifies customer delivery and return collection codes.'
-                    : 'Verify your pickup email code here, then authorized rental staff confirm physical handover. Return verification uses a separate email code.'}
+                    ? 'The person handing over the items sends and verifies the receipt code. The recipient receives it privately by email and in-app notification.'
+                    : 'The shop sends and verifies your pickup receipt code. For self return, send a code to the shop and verify it after the shop receives your items.'}
                 </p>
                 <div>
                   <span>
@@ -529,6 +524,10 @@ function ItemDetails({ item }) {
           <span>
             Booking decision <b>{item.decision || 'pending'}</b>
           </span>
+          {item.pickupVerifiedAt && <span>Receipt verified <b>{date(item.pickupVerifiedAt)}</b></span>}
+          {item.partner && <span>Assigned rider <b>{item.partner.name}</b>
+            {item.partner.phone && <a href={'tel:' + item.partner.phone.replace(/[^+\d]/g, '')}>{item.partner.phone}</a>}
+          </span>}
         </div>
         {item.product?.specifications?.length > 0 && (
           <dl className="cr-product-specifications">

@@ -1,5 +1,5 @@
 import { createHttpError as failure } from '../../utils/http-error.mjs'
-import { requireTransactions, transactionsAvailable } from '../../services/mongo-transactions.mjs'
+import { requireTransactions } from '../../services/mongo-transactions.mjs'
 import mongoose from 'mongoose'
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { RentalRequest } from './rental.model.mjs'
@@ -9,6 +9,7 @@ import { AuditLog } from '../admin/audit-log.model.mjs'
 import { VerificationRate } from '../otp/verification-rate.model.mjs'
 import { DeliveryLocation } from '../delivery/delivery-location.model.mjs'
 import { sendHandoverOtp } from '../../config/mailer.js'
+import { publishHandoverOtp, removeHandoverOtp } from '../notifications/handover-notifications.service.mjs'
 
 export const OTP_EXPIRY_MS = 5 * 60_000
 export const OTP_COOLDOWN_MS = 60_000
@@ -41,6 +42,8 @@ export const maskEmail = (email) => {
 }
 
 function validateContext(actor, rentalId, type, customerFlow = false) {
+  if (customerFlow)
+    throw failure(403, 'WRONG_SENDER', 'Only the shop handing over the items can send and verify a pickup code.')
   if (!actor?._id || (!customerFlow && !['admin', 'rental_shop'].includes(actor.role)))
     throw failure(
       403,
@@ -58,7 +61,7 @@ const rentalFilter = (rentalId, actor, customerFlow) => ({
   ...(customerFlow
     ? { customerId: actor._id }
     : actor.role === 'rental_shop'
-      ? { 'items.providerId': actor._id, items: { $not: { $elemMatch: { providerId: { $ne: actor._id } } } } }
+      ? { 'items.providerId': actor._id }
       : {}),
 })
 
@@ -69,14 +72,12 @@ export function pickupWorkflow(rental) {
       ? 'cancelled'
       : rental.pickupVerifiedAt
         ? 'handed_over'
-        : rental.pickupCustomerVerifiedAt
-          ? 'customer_verified'
-          : challenge?.status === 'sent' && new Date(challenge.expiresAt) > new Date()
-            ? 'pending'
-            : 'not_started'
+        : challenge?.status === 'sent' && new Date(challenge.expiresAt) > new Date()
+          ? 'pending'
+          : 'not_started'
   return {
     status,
-    customerVerifiedAt: rental.pickupCustomerVerifiedAt || null,
+    customerVerifiedAt: rental.pickupVerifiedAt || null,
     sentAt: challenge?.sentAt || null,
     expiresAt: challenge?.expiresAt || null,
   }
@@ -100,8 +101,8 @@ export async function activeVerificationChallenge({ rentalId, type, actor, custo
   const rental = await RentalRequest.findOne(rentalFilter(rentalId, actor, customerFlow)).select(
     `+handover.${type}`,
   )
-  assertHandoverEligible(rental, type)
-  const customer = await User.findById(rental.customerId).select('email')
+  assertHandoverEligible(rental, type, actor)
+  const customer = await User.findOne({ _id: rental.customerId, active: true, role: 'user' }).select('email')
   const challenge = rental.handover?.[type]
   const response = {
     serverTime: new Date(),
@@ -109,7 +110,7 @@ export async function activeVerificationChallenge({ rentalId, type, actor, custo
       ? { pickupVerification: pickupWorkflow(rental) }
       : { returnVerification: returnWorkflow(rental) }),
   }
-  if (challenge?.status === 'sent' && challenge.expiresAt > new Date()) {
+  if (challenge?.status === 'sent' && challenge.expiresAt > new Date() && String(challenge.initiatedBy) === String(actor._id)) {
     Object.assign(response, {
       challengeId: challenge.challengeId,
       maskedEmail: maskEmail(customer?.email || ''),
@@ -129,10 +130,13 @@ export async function customerReturnChallenge({ rentalId, actor }) {
   return activeVerificationChallenge({ rentalId, type: 'return', actor, customerFlow: true })
 }
 
-export function assertHandoverEligible(rental, type) {
-  if (type === 'return' && rental?.returnMethod)
-    throw failure(409, 'RETURN_METHOD_SELECTED', 'Complete the selected return method in the customer return screen.')
-  if (rental?.deliveryWorkflowVersion === 2 && rental.deliveryMethod === 'partner')
+const pickupItems = (rental, actor) => rental.items.filter((i) =>
+  i.decision === 'accepted' && (actor?.role !== 'rental_shop' || String(i.providerId) === String(actor._id)))
+
+export function assertHandoverEligible(rental, type, actor) {
+  if (type === 'return')
+    throw failure(409, 'CUSTOMER_RETURN_REQUIRED', 'The customer sends and verifies the shop receipt code through self return.')
+  if (rental?.deliveryMethod === 'partner')
     throw failure(
       409,
       'DELIVERY_OTP_REQUIRED',
@@ -159,17 +163,14 @@ export function assertHandoverEligible(rental, type) {
       'All items must be accepted and payment collected before pickup.',
     )
   }
-  if (type === 'pickup' && rental.requiresPickupPreparation && !rental.readyForPickupAt)
+  const items = pickupItems(rental, actor)
+  if (!items.length || items.every((i) => i.pickupVerifiedAt))
+    throw failure(409, 'ALREADY_VERIFIED', 'This shop has already handed over its items. Other shop handovers may still be pending.')
+  if (type === 'pickup' && rental.requiresPickupPreparation && !rental.readyForPickupAt && !items.every((i) => i.pickupReadyAt))
     throw failure(
       409,
       'PICKUP_NOT_READY',
       'An administrator is preparing your items. Pickup verification opens when they mark the booking ready.',
-    )
-  if (type === 'return' && !rental.pickupVerifiedAt)
-    throw failure(
-      409,
-      'PICKUP_NOT_VERIFIED',
-      'This rental needs a verified pickup before its return can be verified. Review historical rentals with support.',
     )
 }
 
@@ -208,24 +209,13 @@ export async function initiateVerification({
 }) {
   validateContext(actor, rentalId, type, customerFlow)
   const now = new Date()
+  await requireTransactions()
   await consumeRate(actor._id, 'send', now)
   const rental = await RentalRequest.findOne(rentalFilter(rentalId, actor, customerFlow)).select(
     `+handover.${type}`,
   )
-  assertHandoverEligible(rental, type)
-  if (type === 'pickup' && rental.pickupCustomerVerifiedAt)
-    throw failure(
-      409,
-      'CUSTOMER_ALREADY_VERIFIED',
-      'Your email is verified. An administrator must now confirm physical handover.',
-    )
-  if (type === 'return' && rental.returnOtpVerifiedAt)
-    throw failure(
-      409,
-      'RETURN_ALREADY_VERIFIED',
-      'The return email is verified. Confirm physical receipt and inspection instead.',
-    )
-  const customer = await User.findById(rental.customerId).select('email')
+  assertHandoverEligible(rental, type, actor)
+  const customer = await User.findOne({ _id: rental.customerId, active: true, role: 'user' }).select('email')
   if (!customer?.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email))
     throw failure(
       409,
@@ -233,7 +223,7 @@ export async function initiateVerification({
       'The customer needs a valid registered email before verification.',
     )
   const previous = rental.handover?.[type]
-  const retryAfter = previous
+  const retryAfter = previous && previous.status !== 'verified'
     ? Math.ceil((new Date(previous.sentAt).getTime() + OTP_COOLDOWN_MS - now.getTime()) / 1000)
     : 0
   if (retryAfter > 0)
@@ -256,14 +246,17 @@ export async function initiateVerification({
     attempts: 0,
     status: 'sending',
     initiatedBy: actor._id,
+    recipientId: rental.customerId,
+    productIds: pickupItems(rental, actor).filter((i) => !i.pickupVerifiedAt).map((i) => i.productId),
   }
   const claimed = await RentalRequest.findOneAndUpdate(
     {
       _id: rentalId,
+      __v: rental.__v,
       status: expectedStatus[type],
       customerId: rental.customerId,
-      ...(type === 'pickup' ? { pickupCustomerVerifiedAt: null } : { returnOtpVerifiedAt: null }),
       $or: [
+        { [`${path}.status`]: 'verified' },
         { [`${path}.sentAt`]: { $exists: false } },
         { [`${path}.sentAt`]: { $lte: new Date(now.getTime() - OTP_COOLDOWN_MS) } },
       ],
@@ -277,8 +270,19 @@ export async function initiateVerification({
       'VERIFICATION_CHANGED',
       'Another administrator updated this rental or requested a code. Refresh and try again.',
     )
+  if (previous?.challengeId) await removeHandoverOtp(previous.challengeId)
   try {
     await sendEmail(customer.email, code, type, String(rental._id))
+    await mongoose.connection.transaction(async (session) => {
+      const sent = await RentalRequest.updateOne(
+        { _id: rentalId, status: expectedStatus[type], [`${path}.challengeId`]: challengeId,
+          [`${path}.status`]: 'sending' },
+        { $set: { [`${path}.status`]: 'sent' } }, { session },
+      )
+      if (!sent.modifiedCount) throw failure(409, 'VERIFICATION_CHANGED', 'The rental changed while sending the code.')
+      await publishHandoverOtp({ recipientId: rental.customerId, rentalId, challengeId, code,
+        stage: 'shop pickup', expiresAt: challenge.expiresAt }, session)
+    })
   } catch (error) {
     // Never log an OTP, recipient address, SMTP credentials, or the mail provider response body.
     // The concise transport code is enough to diagnose connectivity/authentication failures in the API terminal.
@@ -291,33 +295,18 @@ export async function initiateVerification({
     )
     throw failure(
       502,
-      'EMAIL_FAILED',
-      'The verification email could not be delivered. Check email settings and request a new code after 60 seconds.',
+      'OTP_DELIVERY_FAILED',
+      'The email and private notification could not both be delivered. This code is invalid. Retry after 60 seconds.',
       { retryAfter: 60 },
     )
   }
-  const sent = await RentalRequest.updateOne(
-    {
-      _id: rentalId,
-      status: expectedStatus[type],
-      [`${path}.challengeId`]: challengeId,
-      [`${path}.status`]: 'sending',
-    },
-    { $set: { [`${path}.status`]: 'sent' } },
-  )
-  if (!sent.modifiedCount)
-    throw failure(
-      409,
-      'VERIFICATION_CHANGED',
-      'This rental changed while the email was sending. Refresh before continuing.',
-    )
   return {
     challengeId,
     maskedEmail: maskEmail(customer.email),
     expiresAt: challenge.expiresAt,
     resendAt: new Date(now.getTime() + OTP_COOLDOWN_MS),
     serverTime: new Date(),
-    message: 'Verification code sent to the customer.',
+    message: 'Code sent to the customer’s email and private inbox. Ask for it after handover.',
   }
 }
 
@@ -338,14 +327,13 @@ export async function verifyHandover({
     !/^[a-f0-9-]{36}$/.test(challengeId)
   )
     throw failure(400, 'INVALID_CODE', 'Enter the six-digit code sent to the customer.')
-  const supportsTransactions = await transactionsAvailable()
-  if (type !== 'pickup' && !supportsTransactions) await requireTransactions()
+  await requireTransactions()
   await consumeRate(actor._id, 'verify', new Date())
   const path = `handover.${type}`
   const rental = await RentalRequest.findOne(rentalFilter(rentalId, actor, customerFlow)).select(
     `+${path} +${path}.otpHash +${path}.emailHash`,
   )
-  assertHandoverEligible(rental, type)
+  assertHandoverEligible(rental, type, actor)
   const challenge = rental.handover?.[type]
   const now = new Date()
   if (!challenge || challenge.challengeId !== challengeId || challenge.status !== 'sent')
@@ -354,6 +342,10 @@ export async function verifyHandover({
       'CODE_UNAVAILABLE',
       'This verification code is no longer available. Request a new code.',
     )
+  if (String(challenge.initiatedBy) !== String(actor._id))
+    throw failure(403, 'WRONG_VERIFIER', 'Only the shop account that sent this code can verify it. Send a new code from your account.')
+  if (!challenge.productIds?.length || !challenge.productIds.every((id) => pickupItems(rental, actor).some((i) => String(i.productId) === String(id) && !i.pickupVerifiedAt)))
+    throw failure(409, 'VERIFICATION_CHANGED', 'The handover items changed. Send a new code.')
   if (challenge.expiresAt <= now)
     throw failure(410, 'OTP_EXPIRED', 'This verification code has expired. Request a new code.')
   if (challenge.attempts >= OTP_MAX_ATTEMPTS)
@@ -362,7 +354,7 @@ export async function verifyHandover({
       'ATTEMPTS_EXHAUSTED',
       'Too many incorrect codes. Request a new code after the resend countdown.',
     )
-  const customer = await User.findById(rental.customerId).select('email')
+  const customer = await User.findOne({ _id: rental.customerId, active: true, role: 'user' }).select('email')
   if (
     !customer?.email ||
     String(challenge.customerId) !== String(rental.customerId) ||
@@ -400,99 +392,13 @@ export async function verifyHandover({
     throw failure(400, 'OTP_INCORRECT', 'The verification code is incorrect. Please try again.')
   const timestampField = type === 'pickup' ? 'pickupVerifiedAt' : 'returnVerifiedAt'
   const actorField = type === 'pickup' ? 'pickupVerifiedBy' : 'returnVerifiedBy'
-  // A customer may request delivery of a code, but only an administrator consumes it.
-  // Customer-initiated codes complete the handover immediately; existing admin-initiated
-  // preparation/inspection workflows keep their separate physical confirmation step.
-  const customerInitiated = String(challenge.initiatedBy) === String(rental.customerId)
-  const stageOnly =
-    customerFlow ||
-    (!customerInitiated &&
-      ((type === 'pickup' && rental.requiresPickupPreparation) ||
-        (type === 'return' && rental.requiresReturnConfirmation)))
+  const allReceived = rental.items.filter((i) => i.decision === 'accepted').every((i) =>
+    i.pickupVerifiedAt || challenge.productIds.some((id) => String(id) === String(i.productId)))
   let updated
-  if (type === 'pickup' && !supportsTransactions) {
-    // A conditional document update is enough for pickup: it consumes this exact
-    // unexpired challenge and switches the rental to active in the same write.
-    // This lets the existing SMTP OTP flow work with a standalone MongoDB server.
-    const verifiedAt = new Date()
-    updated = await RentalRequest.findOneAndUpdate(
-      {
-        _id: rentalId,
-        status: expectedStatus[type],
-        customerId: rental.customerId,
-        [`${path}.challengeId`]: challengeId,
-        [`${path}.status`]: 'sent',
-        [`${path}.expiresAt`]: { $gt: verifiedAt },
-      },
-      {
-        $set: stageOnly
-          ? {
-              pickupCustomerVerifiedAt: verifiedAt,
-              [`${path}.status`]: 'customer_verified',
-              [`${path}.verifiedAt`]: verifiedAt,
-            }
-          : {
-              status: nextStatus[type],
-              pickupVerifiedAt: verifiedAt,
-              pickupVerifiedBy: actor._id,
-              [`${path}.status`]: 'verified',
-              [`${path}.verifiedAt`]: verifiedAt,
-            },
-        $unset: { [`${path}.otpHash`]: 1, [`${path}.emailHash`]: 1 },
-        $inc: { __v: 1 },
-        $push: {
-          statusHistory: {
-            previousStatus: expectedStatus[type],
-            status: stageOnly ? expectedStatus[type] : nextStatus[type],
-            action: stageOnly ? 'pickup.customer_verified' : 'pickup.verified',
-            verificationId: challengeId,
-            at: verifiedAt,
-            by: actor._id,
-            note: stageOnly
-              ? 'Customer email verified. Physical handover awaits administrator confirmation.'
-              : 'Pickup verified using the customer email code.',
-          },
-        },
-      },
-      { returnDocument: 'after', runValidators: true },
-    )
-    if (!updated)
-      throw failure(
-        409,
-        'VERIFICATION_CHANGED',
-        'This code was already used or the rental changed. Refresh the dashboard.',
-      )
-    if (!stageOnly)
-      await Product.updateMany(
-        { _id: { $in: rental.items.map((item) => item.productId) } },
-        { $inc: { __v: 1 } },
-      )
-    try {
-      await AuditLog.create({
-        actorId: actor._id,
-        actorRole: actor.role,
-        action: customerFlow ? 'rental.pickup.customer_verified' : 'rental.pickup.verified',
-        entityType: 'rental_request',
-        entityId: String(rental._id),
-        summary: `${customerFlow ? 'Customer email' : 'Pickup'} verified for rental ${rental._id}. Verification ${challengeId}.`,
-        ipAddress,
-      })
-    } catch (error) {
-      // The handover record is already durable; an audit outage must not report a
-      // successful OTP as a failed pickup to the administrator.
-      console.error(`Rental pickup audit logging failed (${error?.name || 'unknown error'}).`)
-    }
-    return {
-      rental: updated.toObject(),
-      message: stageOnly
-        ? 'Email verified. The rental status stays unchanged until an administrator confirms physical handover.'
-        : 'Pickup verified successfully. Rental is now active.',
-    }
-  }
   await mongoose.connection.transaction(
     async (session) => {
       const verifiedAt = new Date()
-      const currentCustomer = await User.findOne({ _id: rental.customerId, email: customer.email })
+      const currentCustomer = await User.findOne({ _id: rental.customerId, email: customer.email, active: true, role: 'user' })
         .session(session)
         .select('_id')
       if (!currentCustomer)
@@ -507,37 +413,35 @@ export async function verifyHandover({
           [`${path}.expiresAt`]: { $gt: verifiedAt },
         },
         {
-          $set: stageOnly
-            ? {
-                [type === 'pickup' ? 'pickupCustomerVerifiedAt' : 'returnOtpVerifiedAt']:
-                  verifiedAt,
-                [`${path}.status`]: 'customer_verified',
-                [`${path}.verifiedAt`]: verifiedAt,
-              }
-            : {
-                status: nextStatus[type],
-                [timestampField]: verifiedAt,
-                [actorField]: actor._id,
-                [`${path}.status`]: 'verified',
-                [`${path}.verifiedAt`]: verifiedAt,
-              },
+          $set: {
+            status: allReceived ? nextStatus[type] : rental.status,
+            ...(allReceived ? { [timestampField]: verifiedAt, [actorField]: actor._id } : {}),
+            'items.$[received].pickupVerifiedAt': verifiedAt,
+            'items.$[received].pickupVerifiedBy': actor._id,
+            'items.$[received].deliveryStatus': 'delivered',
+            [`${path}.status`]: 'verified',
+            [`${path}.verifiedAt`]: verifiedAt,
+            [`${path}.verifiedBy`]: actor._id,
+          },
           $unset: { [`${path}.otpHash`]: 1, [`${path}.emailHash`]: 1 },
           $inc: { __v: 1 },
           $push: {
             statusHistory: {
               previousStatus: expectedStatus[type],
-              status: stageOnly ? expectedStatus[type] : nextStatus[type],
-              action: stageOnly ? `${type}.customer_verified` : `${type}.verified`,
+              status: allReceived ? nextStatus[type] : rental.status,
+              action: `${type}.verified`,
               verificationId: challengeId,
               at: verifiedAt,
               by: actor._id,
-              note: stageOnly
-                ? 'Customer email verified. Physical handover or receipt awaits administrator confirmation.'
-                : `${type === 'pickup' ? 'Pickup' : 'Return'} verified using the customer email code.`,
+              senderId: challenge.initiatedBy,
+              recipientId: rental.customerId,
+              productIds: challenge.productIds,
+              note: `${type === 'pickup' ? 'Pickup' : 'Return'} verified using the customer email code.`,
             },
           },
         },
-        { returnDocument: 'after', session, runValidators: true },
+        { returnDocument: 'after', session, runValidators: true,
+          arrayFilters: [{ 'received.productId': { $in: challenge.productIds } }] },
       )
       if (!updated)
         throw failure(
@@ -546,16 +450,11 @@ export async function verifyHandover({
           'This code was already used or the rental changed. Refresh the dashboard.',
         )
       // Touch inventory in the same transaction so a racing request cannot use a pre-pickup snapshot.
-      if (type === 'pickup' && !stageOnly)
+      await removeHandoverOtp(challengeId, session)
+      if (type === 'pickup')
         await Product.updateMany(
-          { _id: { $in: rental.items.map((item) => item.productId) } },
+          { _id: { $in: challenge.productIds } },
           { $inc: { __v: 1 } },
-          { session },
-        )
-      if (type === 'return' && !stageOnly)
-        await Product.updateMany(
-          { 'rentalSlots.requestId': rental._id },
-          { $pull: { rentalSlots: { requestId: rental._id } } },
           { session },
         )
       await AuditLog.create(
@@ -577,9 +476,7 @@ export async function verifyHandover({
   )
   return {
     rental: updated.toObject(),
-    message: stageOnly
-      ? 'Email verified. The rental status stays unchanged until an administrator confirms physical handover or receipt.'
-      : type === 'pickup'
+    message: !allReceived ? 'This shop handover is verified. Complete the remaining shop pickups to start the rental.' : type === 'pickup'
         ? 'Pickup verified successfully. Rental is now active.'
         : 'Return verified successfully. Rental has been marked as returned.',
   }
@@ -588,7 +485,7 @@ export async function verifyHandover({
 function ensureProviderScope(rental, actor) {
   if (
     actor.role === 'rental_shop' &&
-      (!rental || !rental.items.length || !rental.items.every((i) => String(i.providerId) === String(actor._id)))
+      (!rental || !rental.items.some((i) => String(i.providerId) === String(actor._id)))
   )
     throw failure(404, 'RENTAL_NOT_FOUND', 'This booking is outside your shop handover scope.')
 }
@@ -603,7 +500,7 @@ export async function preparePickup({ rentalId, actor }) {
     if (
       !rental ||
       rental.status !== 'confirmed' ||
-      rental.readyForPickupAt ||
+      pickupItems(rental, actor).every((i) => i.pickupReadyAt) ||
       !['authorized', 'paid'].includes(rental.payment?.status) ||
       !rental.items.every((item) => item.decision === 'accepted')
     )
@@ -612,7 +509,8 @@ export async function preparePickup({ rentalId, actor }) {
         'PICKUP_NOT_READY',
         'Only paid, approved bookings not already prepared can be marked ready.',
       )
-    rental.readyForPickupAt = new Date()
+    for (const item of pickupItems(rental, actor)) item.pickupReadyAt = new Date()
+    if (rental.items.every((i) => i.pickupReadyAt)) rental.readyForPickupAt = new Date()
     customerId = rental.customerId
     rental.statusHistory.push({
       previousStatus: 'confirmed',
@@ -626,7 +524,7 @@ export async function preparePickup({ rentalId, actor }) {
     await identityNotification(
       rental.customerId,
       'Rental Ready for Pickup',
-      'Your rental items are ready. Verify your pickup email in My rentals, then meet the administrator for physical handover.',
+      'Your items are ready. Meet the shop and share the handover code sent to your email and private inbox.',
       'requests',
       session,
       rental._id,
@@ -649,111 +547,13 @@ export async function preparePickup({ rentalId, actor }) {
   await emailIdentityNotice(
     customerId,
     'Rental Ready for Pickup',
-    'Your items are prepared. Open My rentals to verify your pickup email and arrange physical handover.',
+    'Your items are prepared. Meet the shop to receive them and share the handover code sent by the shop.',
   )
   return { message: 'Rental is ready for pickup.' }
 }
 
-export async function confirmReturnReceipt({ rentalId, actor, inspectionNote }) {
-  validateContext(actor, rentalId, 'return')
-  if (
-    typeof inspectionNote !== 'string' ||
-    inspectionNote.trim().length < 5 ||
-    inspectionNote.trim().length > 1000
-  )
-    throw failure(
-      400,
-      'INSPECTION_REQUIRED',
-      'Record the item inspection in 5–1000 characters before confirming receipt.',
-    )
-  await requireTransactions()
-  let updated
-  await mongoose.connection.transaction(async (session) => {
-    const rental = await RentalRequest.findById(rentalId)
-      .select('+handover.return')
-      .session(session)
-    ensureProviderScope(rental, actor)
-    assertHandoverEligible(rental, 'return')
-    if (!rental.returnOtpVerifiedAt || rental.handover?.return?.status !== 'customer_verified')
-      throw failure(
-        409,
-        'RETURN_NOT_VERIFIED',
-        'Verify the return email code before confirming physical receipt.',
-      )
-    const now = new Date()
-    updated = await RentalRequest.findOneAndUpdate(
-      {
-        _id: rentalId,
-        status: 'active',
-        __v: rental.__v,
-        'handover.return.status': 'customer_verified',
-      },
-      {
-        $set: {
-          status: 'returned',
-          returnVerifiedAt: now,
-          returnVerifiedBy: actor._id,
-          'handover.return.status': 'verified',
-          returnInspection: {
-            note: inspectionNote.trim(),
-            inspectedAt: now,
-            inspectedBy: actor._id,
-          },
-        },
-        $inc: { __v: 1 },
-        $push: {
-          statusHistory: {
-            previousStatus: 'active',
-            status: 'returned',
-            action: 'return.receipt_confirmed',
-            by: actor._id,
-            at: now,
-            note: 'Physical receipt and inspection confirmed after email verification.',
-          },
-        },
-      },
-      { session, returnDocument: 'after', runValidators: true },
-    )
-    if (!updated)
-      throw failure(409, 'VERIFICATION_CHANGED', 'This return changed. Refresh and try again.')
-    await Product.updateMany(
-      { 'rentalSlots.requestId': rental._id },
-      { $pull: { rentalSlots: { requestId: rental._id } }, $inc: { __v: 1 } },
-      { session },
-    )
-    const { identityNotification } = await import('../identity/identity.service.mjs')
-    await identityNotification(
-      rental.customerId,
-      'Rental Return Confirmed',
-      'Your items have been received and inspected. Review My rentals for payment and deposit updates.',
-      'requests',
-      session,
-      rental._id,
-    )
-    await AuditLog.create(
-      [
-        {
-          actorId: actor._id,
-          actorRole: actor.role,
-          action: 'rental.return.receipt_confirmed',
-          entityType: 'rental_request',
-          entityId: String(rentalId),
-          summary: 'Confirmed physical receipt and recorded item inspection.',
-        },
-      ],
-      { session },
-    )
-  })
-  const { emailIdentityNotice } = await import('../identity/identity.service.mjs')
-  await emailIdentityNotice(
-    updated.customerId,
-    'Rental Return Confirmed',
-    'Your items were received and inspected. Review My rentals for payment and deposit details.',
-  )
-  return {
-    message: 'Return receipt and inspection confirmed. Inventory is available again.',
-    rental: updated.toObject(),
-  }
+export async function confirmReturnReceipt() {
+  throw failure(409, 'OTP_REQUIRED', 'The customer must verify the shop receipt code through self return.')
 }
 
 export async function completeRental({ rentalId, actor }) {
@@ -766,6 +566,8 @@ export async function completeRental({ rentalId, actor }) {
     if (!rental || rental.status !== 'returned' || !rental.returnVerifiedAt)
       throw failure(409, 'RETURN_REQUIRED', 'A verified return is required before completion.')
     rental.status = 'completed'
+    const { earnRentalCommissions } = await import('../payments/commission.service.mjs')
+    await earnRentalCommissions(rental, session)
     await DeliveryLocation.deleteMany({ rentalId: rental._id }, { session })
     customerId = rental.customerId
     rental.statusHistory.push({
@@ -808,94 +610,6 @@ export async function completeRental({ rentalId, actor }) {
   return { message: 'Rental completed.' }
 }
 
-export async function confirmPickupHandover({ rentalId, actor, ipAddress = '' }) {
-  validateContext(actor, rentalId, 'pickup')
-  await requireTransactions()
-  let updated
-  await mongoose.connection.transaction(async (session) => {
-    const rental = await RentalRequest.findById(rentalId)
-      .select('+handover.pickup')
-      .session(session)
-    ensureProviderScope(rental, actor)
-    assertHandoverEligible(rental, 'pickup')
-    if (!rental.pickupCustomerVerifiedAt || rental.handover?.pickup?.status !== 'customer_verified')
-      throw failure(
-        409,
-        'CUSTOMER_NOT_VERIFIED',
-        'The customer must verify their email code before you confirm handover.',
-      )
-    const now = new Date()
-    updated = await RentalRequest.findOneAndUpdate(
-      {
-        _id: rentalId,
-        status: 'confirmed',
-        __v: rental.__v,
-        'handover.pickup.status': 'customer_verified',
-      },
-      {
-        $set: {
-          status: 'active',
-          pickupVerifiedAt: now,
-          pickupVerifiedBy: actor._id,
-          'handover.pickup.status': 'verified',
-        },
-        $inc: { __v: 1 },
-        $push: {
-          statusHistory: {
-            previousStatus: 'confirmed',
-            status: 'active',
-            action: 'pickup.handover_confirmed',
-            at: now,
-            by: actor._id,
-            note: 'Administrator confirmed physical handover after customer email verification.',
-          },
-        },
-      },
-      { session, returnDocument: 'after', runValidators: true },
-    )
-    if (!updated)
-      throw failure(
-        409,
-        'VERIFICATION_CHANGED',
-        'This rental changed. Refresh before confirming handover.',
-      )
-    await Product.updateMany(
-      { _id: { $in: rental.items.map((item) => item.productId) } },
-      { $inc: { __v: 1 } },
-      { session },
-    )
-    const { identityNotification } = await import('../identity/identity.service.mjs')
-    await identityNotification(
-      rental.customerId,
-      'Rental Pickup Confirmed',
-      'The administrator confirmed physical handover. Your rental is now on rental.',
-      'requests',
-      session,
-      rental._id,
-    )
-    await AuditLog.create(
-      [
-        {
-          actorId: actor._id,
-          actorRole: actor.role,
-          action: 'rental.pickup.handover_confirmed',
-          entityType: 'rental_request',
-          entityId: String(rentalId),
-          summary: 'Physical pickup confirmed after customer email verification.',
-          ipAddress,
-        },
-      ],
-      { session },
-    )
-  })
-  const { emailIdentityNotice } = await import('../identity/identity.service.mjs')
-  await emailIdentityNotice(
-    updated.customerId,
-    'Rental Pickup Confirmed',
-    'Physical handover has been confirmed. Your booking is now on rental.',
-  )
-  return {
-    rental: updated.toObject(),
-    message: 'Physical handover confirmed. Rental is now on rental.',
-  }
+export async function confirmPickupHandover() {
+  throw failure(409, 'OTP_REQUIRED', 'The shop must send and verify a fresh pickup code to confirm handover.')
 }

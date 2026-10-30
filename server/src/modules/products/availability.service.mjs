@@ -1,4 +1,15 @@
 import { RentalRequest } from '../rentals/rental.model.mjs'
+import { User } from '../users/user.model.mjs'
+
+// Listings are only shown while their provider can take bookings: suspended, demoted or
+// unapproved shops keep their listings, hidden, until they are reinstated.
+export async function bookableProviders() {
+  const ids = await User.distinct('_id', {
+    active: true,
+    $or: [{ role: 'admin' }, { role: 'rental_shop', shopStatus: 'approved' }],
+  })
+  return { providerId: { $in: ids } }
+}
 
 const overlaps = (booking, start, end) =>
   Boolean(start && end && new Date(booking.startDate) < end && new Date(booking.endDate) > start)

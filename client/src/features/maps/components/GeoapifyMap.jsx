@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
 import { geoapifyBrowserKey } from '../api/geoapify.js'
 import '../styles/maps.css'
+import { createRentalPin, createRentalPopup } from '../utils/rentalMapMarkers.js'
 
 const colors = { shop: '#315bd6', destination: '#c46120', partner: '#16864e', return: '#8d4dc4' }
 let library
@@ -15,27 +16,26 @@ const loadLeaflet = () =>
       throw error
     }))
 
-export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeometry, selected }) {
+export default function GeoapifyMap({ markers = [], onPin, onSelect, onProductView, routeGeometry, selected, label = 'Interactive location map' }) {
   const container = useRef(null),
     map = useRef(null),
     leaflet = useRef(null),
     viewport = useRef(''),
-    callbacks = useRef({ onPin, onSelect })
+    callbacks = useRef({ onPin, onSelect, onProductView })
   const [ready, setReady] = useState(false),
     [error, setError] = useState(''),
     [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    callbacks.current = { onPin, onSelect }
-  }, [onPin, onSelect])
+    callbacks.current = { onPin, onSelect, onProductView }
+  }, [onPin, onSelect, onProductView])
   useEffect(() => {
     const key = geoapifyBrowserKey()
     setReady(false)
     setError('')
     viewport.current = ''
     if (!key) {
-      setError(
-        'Maps need VITE_GEOAPIFY_API_KEY in client/.env. Add your Geoapify browser key and restart the frontend.',
-      )
+      console.warn('Maps are disabled: set VITE_GEOAPIFY_API_KEY in client/.env and restart.')
+      setError('The map is unavailable right now.')
       return
     }
     let active = true,
@@ -62,7 +62,7 @@ export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeomet
         tiles.on('tileerror', () => {
           if (active)
             setError(
-              'Geoapify map tiles could not load. Check the browser key, allowed websites, quota and your connection.',
+              'The map could not load. Check your connection, then retry.',
             )
         })
         tiles.on('tileload', () => {
@@ -100,7 +100,15 @@ export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeomet
       group = L.layerGroup().addTo(instance)
     const bounds = L.latLngBounds([])
     for (const entry of entries) {
-      const icon = L.divIcon({
+      const rental = entry.kind === 'rental' && entry.products?.length
+      const icon = L.divIcon(rental ? {
+        className: 're-rental-marker',
+        html: createRentalPin(entry, selected === entry.id),
+        iconSize: null,
+        iconAnchor: [0, 0],
+        tooltipAnchor: [0, -25],
+        popupAnchor: [0, -25],
+      } : {
         className: 're-leaflet-marker',
         html: `<span style="--pin-color:${colors[entry.kind] || colors.destination}" class="re-leaflet-pin${selected === entry.id ? ' is-selected' : ''}"></span>`,
         iconSize: [32, 40],
@@ -114,11 +122,32 @@ export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeomet
         draggable: Boolean(entry.draggable),
         autoPan: Boolean(entry.draggable),
         keyboard: true,
+        bubblingMouseEvents: false,
+        riseOnHover: true,
+        zIndexOffset: selected === entry.id ? 1000 : 0,
       }).addTo(group)
       const tooltip = document.createElement('span')
       tooltip.textContent = entry.title || 'Location'
       marker.bindTooltip(tooltip)
-      marker.on('click', () => callbacks.current.onSelect?.(entry.id))
+      marker.on('click', () => {
+        if (rental && entry.products.length === 1) callbacks.current.onProductView?.(entry.products[0].id)
+        else callbacks.current.onSelect?.(entry.id)
+      })
+      if (rental) marker.getElement()?.addEventListener('keydown', (event) => {
+        if (event.key === ' ') {
+          event.preventDefault()
+          marker.fire('click')
+        }
+      })
+      if (rental && entry.products.length > 1) {
+        marker.bindPopup(createRentalPopup(entry, (id) => callbacks.current.onProductView?.(id)), {
+          className: 're-rental-map-popup', maxWidth: 320, minWidth: 245, autoPanPadding: [25, 30],
+        })
+        if (selected === entry.id) {
+          marker.openPopup()
+          marker.getPopup()?.getElement()?.querySelector('button')?.focus({ preventScroll: true })
+        }
+      }
       if (entry.draggable)
         marker.on('dragend', () => {
           const location = marker.getLatLng()
@@ -126,7 +155,7 @@ export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeomet
         })
       bounds.extend(marker.getLatLng())
     }
-    const viewportKey = JSON.stringify([entries.map((entry) => entry.id).sort(), selected])
+    const viewportKey = JSON.stringify([entries.map((entry) => [entry.id, position(entry.location)]), selected])
     if (viewport.current !== viewportKey || entries.some((entry) => entry.draggable)) {
       const focused = entries.find((entry) => entry.id === selected)
       if (focused) instance.setView(position(focused.location), 15, { animate: false })
@@ -169,7 +198,7 @@ export default function GeoapifyMap({ markers = [], onPin, onSelect, routeGeomet
           </button>
         </div>
       )}
-      <div ref={container} className="re-map" aria-label="Interactive location map" />
+      <div ref={container} className="re-map" role="region" aria-label={label} />
     </div>
   )
 }

@@ -1,11 +1,10 @@
-import { randomUUID } from 'node:crypto'
 import { Product } from './product.model.mjs'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import path from 'node:path'
+import { RentalReview } from './rental-review.model.mjs'
 import { recordAudit } from '../../services/audit.service.js'
-import { removeProductPhotos, saveProductPhotos, imageTypes } from './product-images.service.mjs'
-
-import { productUploadDirectory as ownerUploadDir } from '../../config/paths.js'
+import {
+  removeProductPhotos,
+  saveProductPhotos,
+} from './product-images.service.mjs'
 
 export const listOwnerProducts = async (req, res) => {
   if (req.user.role !== 'rental_shop')
@@ -28,6 +27,7 @@ export const createOwnerProduct = async (req, res) => {
   const hourlyRate = optionalRate(req.body.hourlyRate)
   const weeklyRate = optionalRate(req.body.weeklyRate)
   const longRentalDiscountPercent = Number(req.body.longRentalDiscountPercent || 0)
+  const leadTimeHours = Number(req.body.leadTimeHours ?? 24)
   const photos = Array.isArray(req.body.photos) ? req.body.photos : []
   if (![title, category, description].every((value) => typeof value === 'string' && value.trim()))
     return res
@@ -51,26 +51,14 @@ export const createOwnerProduct = async (req, res) => {
     return res
       .status(400)
       .json({ message: 'Enter valid hourly, weekly, and long-rental discount prices.' })
+  if (!Number.isFinite(leadTimeHours) || leadTimeHours < 0 || leadTimeHours > 720)
+    return res.status(400).json({ message: 'Enter a preparation time from 0 to 720 hours.' })
   if (photos.length < 1 || photos.length > 6)
     return res.status(400).json({ message: 'Add between 1 and 6 product photos.' })
   const savedPaths = []
   try {
-    const images = photos.map((photo) => {
-      const match =
-        typeof photo === 'string' &&
-        photo.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
-      if (!match || !imageTypes[match[1]]) throw new Error('Use JPEG, PNG, or WebP product photos.')
-      const buffer = Buffer.from(match[2], 'base64')
-      if (!buffer.length || buffer.length > 3 * 1024 * 1024)
-        throw new Error('Each photo must be smaller than 3 MB.')
-      return { buffer, extension: imageTypes[match[1]] }
-    })
-    await mkdir(ownerUploadDir, { recursive: true })
-    for (const image of images) {
-      const filename = `${randomUUID()}.${image.extension}`
-      await writeFile(path.join(ownerUploadDir, filename), image.buffer, { flag: 'wx' })
-      savedPaths.push(`/uploads/products/${filename}`)
-    }
+    const saved = await saveProductPhotos(photos)
+    savedPaths.push(...saved.newPaths)
     const specifications = Array.isArray(req.body.specifications)
       ? req.body.specifications
           .slice(0, 20)
@@ -89,6 +77,7 @@ export const createOwnerProduct = async (req, res) => {
       weeklyRate,
       longRentalDiscountPercent,
       depositAmount,
+      leadTimeHours,
       specifications,
       photos: savedPaths,
       location: req.user.shopAddress || 'Shop location not confirmed',
@@ -103,11 +92,7 @@ export const createOwnerProduct = async (req, res) => {
     })
     return res.status(201).json({ message: 'Rental listing published.', product })
   } catch (error) {
-    await Promise.all(
-      savedPaths.map((file) =>
-        unlink(path.join(ownerUploadDir, path.basename(file))).catch(() => {}),
-      ),
-    )
+    await removeProductPhotos(savedPaths)
     const isInputError =
       error.message.startsWith('Use JPEG') || error.message.startsWith('Each photo')
     return res
@@ -159,13 +144,17 @@ export const updateOwnerProduct = async (req, res) => {
   if (req.body.active !== undefined) {
     if (typeof req.body.active !== 'boolean')
       return res.status(400).json({ message: 'Listing status must be active or inactive.' })
+    if (req.body.active && product.adminDisabled)
+      return res.status(403).json({
+        message: 'RentEase removed this listing. Contact support to have it reviewed.',
+      })
     updates.active = req.body.active
   }
   let newImagePaths = [],
     removedImagePaths = []
   if (req.body.photos !== undefined) {
     try {
-      const result = await saveProductPhotos(req.body.photos, product.photos, ownerUploadDir)
+      const result = await saveProductPhotos(req.body.photos, product.photos)
       updates.photos = result.photos
       newImagePaths = result.newPaths
       removedImagePaths = product.photos.filter((photo) => !result.photos.includes(photo))
@@ -179,10 +168,10 @@ export const updateOwnerProduct = async (req, res) => {
     Object.assign(product, updates)
     await product.save()
   } catch (error) {
-    await removeProductPhotos(newImagePaths, ownerUploadDir)
+    await removeProductPhotos(newImagePaths)
     throw error
   }
-  await removeProductPhotos(removedImagePaths, ownerUploadDir)
+  await removeProductPhotos(removedImagePaths)
   recordAudit(req, {
     action: 'product.updated',
     entityType: 'product',
@@ -190,4 +179,48 @@ export const updateOwnerProduct = async (req, res) => {
     summary: `Updated rental listing ${product.title}.`,
   })
   res.json({ message: 'Listing updated.', product })
+}
+
+// Reviews customers left on this shop's listings, grouped by product for the owner workspace.
+export const listOwnerReviews = async (req, res) => {
+  if (req.user.role !== 'rental_shop')
+    return res.status(403).json({ message: 'Rental shop access is required.' })
+  const [products, reviews] = await Promise.all([
+    Product.find({ providerId: req.user._id })
+      .select('title category photos ratingAverage ratingCount active')
+      .sort({ createdAt: -1 })
+      .lean(),
+    RentalReview.find({ targetId: req.user._id, direction: 'customer_to_owner' })
+      .populate('authorId', 'username')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean(),
+  ])
+  const grouped = products.map((product) => {
+    const own = reviews.filter((review) => String(review.productId) === String(product._id))
+    return {
+      _id: product._id,
+      title: product.title,
+      category: product.category,
+      photo: product.photos?.[0] || null,
+      active: product.active,
+      ratingAverage: own.length ? own.reduce((sum, review) => sum + review.rating, 0) / own.length : 0,
+      ratingCount: own.length,
+      reviews: own.map((review) => ({
+        _id: review._id,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.createdAt,
+        author: review.authorId?.username || 'Customer',
+      })),
+    }
+  })
+  const total = reviews.length
+  res.json({
+    products: grouped,
+    summary: {
+      ratingCount: total,
+      ratingAverage: total ? reviews.reduce((sum, review) => sum + review.rating, 0) / total : 0,
+    },
+  })
 }

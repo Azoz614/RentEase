@@ -11,6 +11,7 @@ const pendingRegistrationSchema = new mongoose.Schema({
   otpAttempts: { type: Number, default: 0 },
   lastOtpSentAt: { type: Date, required: true },
   verifiedAt: { type: Date, default: null },
+  verificationTokenHash: { type: String, select: false },
   expiresAt: { type: Date, required: true, index: { expires: 0 } },
 })
 

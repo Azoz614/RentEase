@@ -3,13 +3,21 @@ import useDeliveryQuote from '../../maps/hooks/useDeliveryQuote.js'
 import { rentalPrice } from '../../rentals/utils/rentalPricing.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addressText } from '../../identity/utils/address.js'
-import { defaultRentalDates, validRentalDates } from '../../rentals/utils/rentalAvailability.js'
+import { defaultRentalDates, toServerDate, validRentalDates } from '../../rentals/utils/rentalAvailability.js'
 import { formatCurrency as money } from '../../../utils/currency.js'
 import useAccountSettings from './useAccountSettings.js'
 import { createApiClient } from '../../../services/http.js'
+import useProductRoute from '../../products/hooks/useProductRoute.js'
+import { emptyLoyalty, loyaltyRewardAmount } from '../../loyalty/utils/loyalty.js'
+import { providerOf, shopNameOf } from '../../rentals/utils/rentalShop.js'
 
 const initialDates = defaultRentalDates()
-const today = initialDates.startDate
+// Customer pages live in ?view= so Back, Forward and refresh keep the customer where they were.
+const VIEWS = new Set(['browse', 'requests', 'wishlist', 'rewards', 'messages', 'inbox', 'addresses', 'verification'])
+const viewFromUrl = () => {
+  const view = new URLSearchParams(window.location.search).get('view')
+  return VIEWS.has(view) ? view : 'browse'
+}
 
 export default function useMarketplace({ user, token, onLogout, onAccountUpdate }) {
   const [products, setProducts] = useState([])
@@ -22,8 +30,13 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   const [, setNic] = useState('')
   const [savedNic, setSavedNic] = useState('')
   const [loyaltyPoints, setLoyaltyPoints] = useState(0)
+  const [loyalty, setLoyalty] = useState(emptyLoyalty)
+  // The cart item a loyalty level reward (2% off) is applied to, if any.
+  const [rewardChoice, setRewardChoice] = useState('')
+  // An item from another shop the customer tried to add: { product, currentShop, nextShop }.
+  const [cartConflict, setCartConflict] = useState(null)
   const [identityProfile, setIdentityProfile] = useState(null)
-  const [startDate, setStartDate] = useState(today)
+  const [startDate, setStartDate] = useState(initialDates.startDate)
   const [endDate, setEndDate] = useState(initialDates.endDate)
   const catalogSequence = useRef(0)
   const endDateInput = useRef(null)
@@ -38,15 +51,23 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   const [couponInput, setCouponInput] = useState('')
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponMessage, setCouponMessage] = useState('')
-  const [panel, setPanel] = useState('browse')
+  const [panel, setPanelState] = useState(viewFromUrl)
+  const setPanel = useCallback((next) => {
+    setPanelState(next)
+    const url = next === 'browse' ? window.location.pathname : `${window.location.pathname}?view=${next}`
+    if (url !== window.location.pathname + window.location.search) window.history.pushState({ view: next }, '', url)
+  }, [])
+  useEffect(() => {
+    const onPopState = () => setPanelState(viewFromUrl())
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [productReviews, setProductReviews] = useState([])
-  const [reviewsLoading, setReviewsLoading] = useState(false)
 
   const animateSignOut = () => {
     if (signingOut) return
@@ -54,6 +75,9 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     window.setTimeout(() => onLogout(), 1450)
   }
 
+  // Recomputed each render so a tab left open past midnight never offers yesterday.
+  const today = defaultRentalDates().startDate
+  const wishlistPending = useRef(new Set())
   const api = useMemo(() => createApiClient(token), [token])
   const accountSettings = useAccountSettings({
     user,
@@ -80,10 +104,10 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
       const sequence = ++catalogSequence.current
       if (!silent) setProductsLoading(true)
       try {
-        const [catalog, orders, inbox, saved, identity] = await Promise.all([
+        const results = await Promise.allSettled([
           api(
             validRentalDates(startDate, endDate)
-              ? `/api/products?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+              ? `/api/products?startDate=${encodeURIComponent(toServerDate(startDate))}&endDate=${encodeURIComponent(toServerDate(endDate))}`
               : '/api/products',
           ),
           catalogOnly ? null : api('/api/requests'),
@@ -91,7 +115,9 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
           catalogOnly ? null : api('/api/wishlist'),
           catalogOnly ? null : api('/api/identity/status'),
         ])
+        const [catalog, orders, inbox, saved, identity] = results.map((result) => result.status === 'fulfilled' ? result.value : null)
         if (sequence !== catalogSequence.current) return
+        if (!catalog) throw results[0].reason
         setProducts(catalog.products || [])
         setSelectedProduct((current) =>
           current ? catalog.products?.find((product) => product._id === current._id) || null : null,
@@ -108,11 +134,12 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
           setNic(catalog.nic || '')
           setSavedNic(catalog.nic || '')
           setLoyaltyPoints(catalog.loyaltyPoints || 0)
+          if (catalog.loyalty) setLoyalty(catalog.loyalty)
           setMapsConfigured(catalog.mapsConfigured)
-          setRequests(orders.requests || [])
-          setNotifications(inbox.notifications || [])
-          setWishlist(saved.products || [])
-          setIdentityProfile(identity)
+          if (orders) setRequests(orders.requests || [])
+          if (inbox) setNotifications(inbox.notifications || [])
+          if (saved) setWishlist(saved.products || [])
+          if (identity) setIdentityProfile(identity)
         }
       } catch (loadError) {
         if (sequence === catalogSequence.current) setError(loadError.message)
@@ -147,7 +174,7 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   const returnToBrowse = useCallback(() => {
     setPanel('browse')
     load({ catalogOnly: true })
-  }, [load])
+  }, [load, setPanel])
   const openVerification = () => {
     document.getElementById('profile-settings')?.close()
     document.getElementById('rental-checkout')?.close()
@@ -164,20 +191,48 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     setAddress(addressText(result.defaultAddress))
     setSavedAddress(addressText(result.defaultAddress))
   }, [api])
-  const addToRequest = (product) => {
+  const addToRequest = (product, { withReward = false } = {}) => {
     if (!validRentalDates(startDate, endDate)) {
       setMessage(
         'Choose a return date after the start date to check availability and add this item.',
       )
       endDateInput.current?.focus()
-      return
+      return false
     }
     if (identityProfile?.eligible !== true) {
-      openVerification()
-      return
+      setMessage(identityProfile?.status === 'pending'
+        ? 'Your NIC verification is pending. You can keep browsing while an administrator reviews it.'
+        : ['rejected', 'resubmission_required'].includes(identityProfile?.status)
+          ? 'Your NIC verification needs attention. Review the feedback and resubmit before requesting a rental.'
+          : 'Verify your NIC and residential address before requesting a rental. You can continue exploring all products.')
+      document.getElementById('rental-verification-notice')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+      return false
     }
-    if (productsLoading || !product.available) return
+    if (productsLoading || !product.available) return false
+    // One request = one shop, so everything is picked up together or brought by one rider.
+    const inCart = products.find((entry) => cart.includes(entry._id) && entry._id !== product._id)
+    if (inCart && providerOf(inCart) !== providerOf(product)) {
+      setCartConflict({ product, currentShop: shopNameOf(inCart), nextShop: shopNameOf(product), withReward })
+      return 'conflict'
+    }
     setCart((current) => (current.includes(product._id) ? current : [...current, product._id]))
+    return true
+  }
+  // Rewards page: put the item in the request with the 2% level reward on it.
+  const redeemReward = (product) => {
+    if (loyalty.rewardsAvailable < 1) return false
+    const added = addToRequest(product, { withReward: true })
+    if (added === true) setRewardChoice(product._id)
+    return added
+  }
+  // "Start a new request": the other shop's item replaces the current cart.
+  const startRequestWith = () => {
+    if (!cartConflict) return
+    setCart([cartConflict.product._id])
+    setRewardChoice(cartConflict.withReward ? cartConflict.product._id : '')
+    setAppliedCoupon(null)
+    setMessage(`Started a new request from ${cartConflict.nextShop}.`)
+    setCartConflict(null)
   }
 
   useEffect(() => {
@@ -185,12 +240,12 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     const poll = async () => {
       if (document.visibilityState === 'hidden') return
       try {
-        const [identity, inbox] = await Promise.all([
+        const [identity, inbox] = await Promise.allSettled([
           api('/api/identity/status'),
           api('/api/inbox'),
         ])
-        setIdentityProfile(identity)
-        setNotifications(inbox.notifications || [])
+        if (identity.status === 'fulfilled') setIdentityProfile(identity.value)
+        if (inbox.status === 'fulfilled') setNotifications(inbox.value.notifications || [])
       } catch {
         /* Existing notices remain visible during a transient refresh failure. */
       }
@@ -246,16 +301,26 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
   const cartProducts = cart
     .map((id) => products.find((product) => product._id === id))
     .filter(Boolean)
+  // Every cart item comes from this shop; items from other shops need a separate request.
+  const cartShop = cartProducts[0]
+    ? { id: providerOf(cartProducts[0]), name: shopNameOf(cartProducts[0]) }
+    : null
   const hours =
     endDate && new Date(endDate) > new Date(startDate)
       ? Math.ceil((new Date(endDate) - new Date(startDate)) / 3600000)
       : 0
   const days = hours ? Math.ceil(hours / 24) : 0
-  const durationLabel = billingUnit === 'hour' ? `${hours} hours` : `${days} days`
-  const subtotal = cartProducts.reduce(
-    (sum, item) => sum + rentalPrice(item, days, billingUnit === 'hour' ? hours : null),
-    0,
-  )
+  const durationLabel =
+    billingUnit === 'hour' ? `${hours} ${hours === 1 ? 'hour' : 'hours'}` : `${days} ${days === 1 ? 'day' : 'days'}`
+  // The reward only counts while one is available and its item is still in the cart.
+  const rewardProductId =
+    loyalty.rewardsAvailable > 0 && cart.includes(rewardChoice) ? rewardChoice : ''
+  const fullPrice = (item) => rentalPrice(item, days, billingUnit === 'hour' ? hours : null)
+  const loyaltyDiscount = rewardProductId
+    ? loyaltyRewardAmount(fullPrice(cartProducts.find((item) => item._id === rewardProductId)))
+    : 0
+  const subtotal =
+    cartProducts.reduce((sum, item) => sum + fullPrice(item), 0) - loyaltyDiscount
   const profileReady = identityProfile?.eligible === true
   const selectedAddress =
     identityProfile?.addresses?.find((entry) => entry._id === deliverySelection.addressId) ||
@@ -275,6 +340,7 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     endDate,
     billingUnit,
     couponCode: appliedCoupon?.subtotal === subtotal ? appliedCoupon.code : '',
+    loyaltyRewardProductId: rewardProductId,
     pricingContext: cartProducts.map((item) => [
       item._id,
       rentalPrice(item, days, billingUnit === 'hour' ? hours : null),
@@ -296,8 +362,8 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
         method: 'POST',
         body: JSON.stringify({
           productIds: cart,
-          startDate,
-          endDate,
+          startDate: toServerDate(startDate),
+          endDate: toServerDate(endDate),
           billingUnit,
           deliveryMethod,
           address: deliveryMethod === 'partner' ? feeQuote?.destination.address : savedAddress,
@@ -312,10 +378,12 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
                   ? (feeQuote?.deliveryFee || 0) + (feeQuote?.returnCollectionFee || 0)
                   : 0),
           couponCode: appliedCoupon?.subtotal === subtotal ? appliedCoupon.code : '',
+          loyaltyRewardProductId: rewardProductId,
         }),
       })
       document.getElementById('rental-checkout')?.close()
       setCart([])
+      setRewardChoice('')
 
       setPanel('requests')
       setMessage(result.message)
@@ -328,7 +396,17 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
       setBusy(false)
     }
   }
+  const removeFromCart = (productId) => setCart((current) => current.filter((id) => id !== productId))
+  const clearCart = () => {
+    setCart([])
+    setRewardChoice('')
+    setAppliedCoupon(null)
+    document.getElementById('rental-checkout')?.close()
+  }
   const toggleWishlist = async (product) => {
+    // Ignore repeat clicks while this product's request is in flight.
+    if (wishlistPending.current.has(product._id)) return
+    wishlistPending.current.add(product._id)
     setError('')
     try {
       if (wishlist.some((saved) => saved._id === product._id)) {
@@ -336,26 +414,23 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
         setWishlist((items) => items.filter((item) => item._id !== product._id))
       } else {
         await api(`/api/wishlist/${product._id}`, { method: 'PUT' })
-        setWishlist((items) => [...items, product])
+        setWishlist((items) => (items.some((item) => item._id === product._id) ? items : [...items, product]))
       }
     } catch (wishlistError) {
       setError(wishlistError.message)
-    }
-  }
-  const openProductDetails = async (product) => {
-    setSelectedProduct(products.find((entry) => entry._id === product._id) || product)
-    setProductReviews([])
-    setReviewsLoading(true)
-    document.getElementById('product-details')?.showModal()
-    try {
-      const result = await api(`/api/reviews/product/${product._id}`)
-      setProductReviews(result.reviews || [])
-    } catch {
-      setProductReviews([])
     } finally {
-      setReviewsLoading(false)
+      wishlistPending.current.delete(product._id)
     }
   }
+  const showProductDetails = (product) => {
+    setSelectedProduct(products.find((entry) => entry._id === product._id) || product)
+  }
+  const { open: openProductDetails, close: closeProductDetails } = useProductRoute({
+    products,
+    selectedId: selectedProduct?._id,
+    show: showProductDetails,
+    hide: () => setSelectedProduct(null),
+  })
   const handleProductCardKey = (event, product) => {
     if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
       event.preventDefault()
@@ -402,6 +477,15 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     address,
     savedAddress,
     loyaltyPoints,
+    loyalty,
+    rewardProductId,
+    setRewardChoice,
+    redeemReward,
+    loyaltyDiscount,
+    cartShop,
+    cartConflict,
+    setCartConflict,
+    startRequestWith,
     identityProfile,
     setIdentityProfile,
     startDate,
@@ -412,6 +496,8 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     billingUnit,
     cart,
     setCart,
+    removeFromCart,
+    clearCart,
     search,
     setSearch,
     category,
@@ -439,8 +525,6 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     signingOut,
     selectedProduct,
     setSelectedProduct,
-    productReviews,
-    reviewsLoading,
     animateSignOut,
     api,
     accountSettings,
@@ -466,6 +550,7 @@ export default function useMarketplace({ user, token, onLogout, onAccountUpdate 
     checkout,
     toggleWishlist,
     openProductDetails,
+    closeProductDetails,
     handleProductCardKey,
     applyCoupon,
     calculateDelivery,

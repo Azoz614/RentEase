@@ -36,17 +36,15 @@ export default function PartnerAvailability({ api, onRefresh }) {
       .catch(() => {})
   }, [api, onRefresh])
   useEffect(() => { stopRef.current = stop }, [stop])
+  // Opening navigation or switching apps hides the page but the rider is still working, so
+  // only closing RentEase goes offline. If updates stop, the 75s staleness check below
+  // and the server's 90s expiry take the rider offline.
   useEffect(() => {
-    const hide = () => {
-      if (document.hidden && !stopped.current) stopRef.current?.()
-    }
     const leave = () => {
       if (!stopped.current) stopRef.current?.()
     }
-    document.addEventListener('visibilitychange', hide)
     window.addEventListener('pagehide', leave)
     return () => {
-      document.removeEventListener('visibilitychange', hide)
       window.removeEventListener('pagehide', leave)
       leave()
     }
@@ -167,21 +165,31 @@ export default function PartnerAvailability({ api, onRefresh }) {
     requestPosition()
   }
   return (
-    <section className="dispatch-availability">
+    <section className={`dispatch-availability${online ? ' is-online' : ''}`}>
       <div>
         <b>
+          <span className="dispatch-status-dot" aria-hidden="true" />
           {online
-            ? 'Online for nearby requests'
+            ? 'You are online'
             : starting
               ? 'Getting your current location…'
               : 'You are offline'}
         </b>
         <p>
-          With your permission, availability uses your device’s current location. On an assigned trip it also updates tracking for its customer, shop and administrators. It stops when this page
-          is hidden or closed; stale positions expire after 90 seconds.
+          {online
+            ? 'You will see delivery requests near you as they come in.'
+            : 'Go online to share your location and receive delivery requests near you.'}
         </p>
+        <details className="dispatch-location-details"><summary>Location sharing details</summary><p>
+          With your permission, availability uses your device’s current location. On an assigned trip it also updates tracking for its customer, shop and administrators. It stops when you go
+          offline or close RentEase; stale positions expire after 90 seconds.
+        </p></details>
       </div>
-      <button type="button" onClick={online || starting ? stop : start}>
+      <button
+        type="button"
+        className={online || starting ? '' : 'dispatch-go-online'}
+        onClick={online || starting ? stop : start}
+      >
         {online || starting ? 'Go offline' : 'Go online'}
       </button>
       {notice && <p role="status">{notice}</p>}

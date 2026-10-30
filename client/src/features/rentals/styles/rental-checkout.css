@@ -29,7 +29,7 @@
 .rental-checkout .delivery-options label:has(input:focus-visible) { outline: 3px solid #8dac6c; outline-offset: 3px; }
 .rental-checkout .delivery-options input { accent-color: var(--re-primary); width: 18px; height: 18px; flex-shrink: 0; }
 .rental-checkout .delivery-options b, .rental-checkout .delivery-options small { display: block; }
-.rental-checkout .delivery-options small { margin-top: 7px; color: var(--re-muted); font-size: 12px; line-height: 1.6; }
+.rental-checkout .delivery-options small { margin-top: 7px; color: var(--re-muted); font-size: 13px; line-height: 1.6; }
 @media (max-width: 480px) { .rental-checkout .delivery-options { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .rental-checkout .delivery-options label { transition: none; } }
 .rental-checkout .rental-order-summary {
@@ -37,7 +37,7 @@
 }
 .rental-checkout .rental-order-summary > p {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .rental-checkout .checkout-date-grid {
   display: grid;
@@ -48,7 +48,7 @@
   display: grid;
   gap: 8px;
   min-width: 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .rental-checkout .checkout-date-grid input {
   width: 100%;
@@ -79,12 +79,12 @@
 }
 .rental-checkout .checkout-destination > span {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .rental-checkout .checkout-destination p {
   margin: 6px 0 0;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 .rental-checkout .checkout-route-metrics {
@@ -96,7 +96,7 @@
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .rental-checkout .checkout-route-metrics dt {
   color: var(--re-muted);
@@ -108,7 +108,7 @@
 }
 .rental-checkout .checkout-shop-routes {
   margin: 14px 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .rental-checkout .checkout-shop-routes summary {
   cursor: pointer;
@@ -119,7 +119,7 @@
 }
 .rental-checkout .checkout-route-error {
   color: #a92323;
-  font-size: 13px;
+  font-size: 14px;
 }
 .rental-checkout .checkout-grand-total {
   margin-top: 10px;
@@ -137,7 +137,7 @@
 }
 .rental-checkout .checkout-route-loading {
   padding: 18px 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-muted);
 }
 .rental-checkout .checkout-loading-bar {
@@ -179,4 +179,75 @@
   .rental-checkout .checkout-loading-bar {
     animation: none;
   }
+}
+
+.rental-checkout .checkout-items > div {
+  display: flex;
+  align-items: center;
+}
+.rental-checkout .checkout-items > div > span {
+  flex: 1;
+  min-width: 0;
+}
+.rental-checkout .checkout-remove {
+  min-height: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--re-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.rental-checkout .checkout-remove:hover:not(:disabled) {
+  color: var(--re-danger);
+}
+
+/* Loyalty level reward */
+.rental-checkout .checkout-reward-tag {
+  display: block;
+  margin-top: 3px;
+  color: var(--re-primary);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.rental-checkout .checkout-item-rewarded > b {
+  color: var(--re-primary);
+}
+.rental-checkout .checkout-reward-picker {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0 4px;
+  padding: 12px 13px;
+  border: 1px dashed color-mix(in srgb, var(--re-primary) 45%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(120deg, var(--re-soft), #fff8e6);
+}
+.rental-checkout .checkout-reward-picker > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+.rental-checkout .checkout-reward-picker small {
+  color: var(--re-muted);
+  font-size: 12px;
+}
+.rental-checkout .checkout-reward-picker select {
+  width: 100%;
+  min-height: 40px;
+}
+
+.rental-checkout .checkout-shop-note {
+  margin: 6px 0 10px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--re-soft);
+  color: var(--re-ink);
+  font-size: 12.5px;
 }

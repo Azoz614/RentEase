@@ -73,7 +73,7 @@
 }
 .cr-otp-fieldset legend {
   width: 100%;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--re-ink);
   margin-bottom: 12px;
 }
@@ -110,7 +110,7 @@
 .cr-otp-timer,
 .cr-otp-footnote {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 .cr-otp-start-message {
@@ -130,7 +130,7 @@
 .cr-cancel-reason {
   display: block;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--re-ink);
   margin-top: 16px;
 }

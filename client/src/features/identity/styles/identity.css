@@ -25,7 +25,7 @@
   display: block;
   font-family: inherit;
   line-height: 1.5;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.6px;
   color: var(--re-ink);
@@ -38,7 +38,7 @@
   color: var(--re-ink);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
 }
 .iv-card {
   background: #fff;
@@ -71,7 +71,7 @@
   color: #fff;
   background: #315f82;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   cursor: pointer;
   transition:
@@ -114,7 +114,7 @@
   flex-direction: column;
   gap: 8px;
   margin: 10px 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--re-ink);
 }
@@ -178,7 +178,7 @@
 }
 .iv-muted {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .iv-status-card {
   display: flex;
@@ -197,7 +197,7 @@
 }
 .iv-status-card p {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   max-width: 630px;
 }
@@ -244,7 +244,7 @@
 }
 .iv-stepper li {
   flex: 1;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .iv-stepper li span {
@@ -255,7 +255,7 @@
   border-radius: 50%;
   background: #e9eef3;
   margin-bottom: 7px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .iv-stepper li.active {
   color: var(--re-ink);
@@ -273,7 +273,7 @@
   box-shadow: none;
 }
 .iv-privacy p {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--re-muted);
 }
 .iv-upload-grid,
@@ -328,7 +328,7 @@
   outline-offset: 2px;
 }
 .iv-upload small {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
 }
 .iv-summary {
@@ -342,7 +342,7 @@
   gap: 16px;
 }
 .iv-summary dt {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-muted);
 }
 .iv-summary dd {
@@ -409,14 +409,14 @@
   object-fit: contain;
 }
 .iv-private-photo figcaption {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--re-muted);
   margin-top: 10px;
 }
 .iv-badge,
 .iv-status-pill {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   padding: 6px 10px;
   color: #315f82;
@@ -460,7 +460,7 @@
 .iv-history li {
   padding: 8px 0 15px;
   color: var(--re-ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 .iv-history small {
   display: block;
@@ -490,14 +490,14 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 650px;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
 }
 .iv-table th {
   padding: 14px 12px;
   background: #f2f6f9;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .iv-table td {
   padding: 16px 12px;
@@ -506,7 +506,7 @@
 .iv-table small {
   display: block;
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 5px;
 }
 .iv-dispute-row {
@@ -593,7 +593,7 @@
     font-size: 17px;
   }
   .iv-stepper b {
-    font-size: 9px;
+    font-size: 11px;
   }
   .iv-dialog {
     padding: 23px;

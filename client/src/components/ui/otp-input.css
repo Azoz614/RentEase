@@ -1,0 +1,12 @@
+.otp-input { display: flex; gap: clamp(5px, 1.4vw, 10px); width: 100%; margin: 16px 0; }
+.otp-input input:not([type="hidden"]) { box-sizing: border-box; flex: 1 1 0; min-width: 0; width: 0; max-width: 58px; height: 58px; margin: 0; padding: 0; border: 1.5px solid #cbd8df; border-radius: 12px; background: #f7fafb; color: #173c3a; font: 700 24px/1 inherit; font-family: inherit; font-size: 24px; font-weight: 700; text-align: center; box-shadow: 0 2px 3px #142c3005; transition: border-color .2s, background .2s, box-shadow .2s; }
+.otp-input input:not([type="hidden"]):focus { outline: 0; border-color: #315f82; box-shadow: 0 0 0 3px #315f8220; background: #fff; }
+.otp-input input:disabled { cursor: default; opacity: .8; }
+.otp-input.is-error input:not([type="hidden"]) { border-color: #ce4c4c; background: #fff2f1; color: #9b2d32; }
+.otp-input.is-error { animation: otp-shake .32s ease both; }
+.otp-input.is-success input:not([type="hidden"]) { border-color: #278060; background: #eaf8ef; color: #176448; opacity: 1; }
+.otp-input.is-success { animation: otp-success .35s ease both; }
+@keyframes otp-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@keyframes otp-success { 50% { transform: translateY(-3px); } }
+@media (max-width: 380px) { .otp-input input:not([type="hidden"]) { height: 48px; border-radius: 9px; font-size: 21px; } }
+@media (prefers-reduced-motion: reduce) { .otp-input, .otp-input input:not([type="hidden"]) { animation: none; transition: none; } }

@@ -143,7 +143,7 @@ test('administrator approval sends private notifications and enables the actual 
   assert.equal((await request(app).patch(`/api/notifications/${notice._id}`).set(auth()).send({ read: true })).body.notification.readAt !== null, true)
 })
 
-test('customer requests reach both the owning shop and every administrator, never an unrelated shop', async () => {
+test('customer requests reach only the owning shop, never an administrator or an unrelated shop', async () => {
   const shop = await User.create({ username: 'Camera Shop', email: 'camera-shop@example.test', phone: '0771111222', password: passwordHash, role: 'rental_shop', shopStatus: 'approved' })
   const stranger = await User.create({ username: 'Unrelated Shop', email: 'unrelated-shop@example.test', phone: '0771111333', password: passwordHash, role: 'rental_shop', shopStatus: 'approved' })
   await Product.updateOne({ _id: product._id }, { $set: { providerId: shop._id } })
@@ -152,34 +152,97 @@ test('customer requests reach both the owning shop and every administrator, neve
   assert.equal(created.status, 201)
   const id = created.body.request._id
   const list = (user) => request(app).get('/api/provider/requests').set(auth(user))
-  for (const user of [admin, shop]) {
-    const result = await list(user)
-    assert.equal(result.status, 200)
-    assert.ok(result.body.requests.some((row) => row._id === id))
-    assert.match(result.headers['cache-control'], /no-store/)
-    assert.ok(await Notification.exists({ userId: user._id, requestId: id, title: 'New rental request' }))
-  }
+  const result = await list(shop)
+  assert.equal(result.status, 200)
+  assert.ok(result.body.requests.some((row) => row._id === id))
+  assert.match(result.headers['cache-control'], /no-store/)
+  assert.ok(await Notification.exists({ userId: shop._id, requestId: id, title: 'New rental request' }))
+  assert.equal(await Notification.exists({ userId: admin._id, requestId: id, title: 'New rental request' }), null)
+  assert.equal((await list(admin)).body.requests.length, 0)
   assert.equal((await list(stranger)).body.requests.length, 0)
   assert.equal((await list(customer)).status, 403)
   assert.equal((await request(app).get('/api/provider/requests')).status, 401)
   const legacyAdmin = await request(app).get('/api/admin/rental-requests').set(auth(admin))
-  assert.ok(legacyAdmin.body.requests.some((row) => row._id === id))
-  const change = (user) => request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(user)).send({ decision: 'accepted' })
+  assert.equal(legacyAdmin.body.requests.length, 0)
+  const change = (user, extra = { password }) => request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(user)).send({ decision: 'accepted', ...extra })
   assert.equal((await change(stranger)).status, 404)
-  assert.equal((await change(admin)).status, 200)
+  assert.equal((await change(admin)).status, 404, 'an administrator cannot accept a shop listing')
+  assert.equal((await change(shop, {})).body.code, 'PASSWORD_REQUIRED')
+  assert.equal((await change(shop)).status, 200)
   assert.equal((await change(shop)).status, 409)
 })
 
-test('a mixed-provider booking exposes only each shop own items while admin sees every item', async () => {
+test('accepting needs the account password and three wrong entries lock approvals for 10 minutes', async () => {
+  await submit(); await decision()
+  const id = (await book()).body.request._id
+  const accept = (value) => request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted', password: value })
+  const first = await accept('wrong-password-1')
+  assert.equal(first.status, 403); assert.equal(first.body.code, 'PASSWORD_INCORRECT'); assert.match(first.body.message, /2 attempts left/)
+  assert.match((await accept('wrong-password-2')).body.message, /1 attempt left/)
+  const locked = await accept('wrong-password-3')
+  assert.equal(locked.status, 429); assert.equal(locked.body.code, 'APPROVAL_LOCKED')
+  assert.ok(locked.body.retryAfter > 590 && locked.body.retryAfter <= 600)
+  assert.equal((await accept(password)).status, 429, 'the right password is refused while locked')
+  assert.equal((await RentalRequest.findById(id)).items[0].decision, 'pending')
+  // Once the lock expires the right password works and clears the failure count.
+  await User.updateOne({ _id: admin._id }, { $set: { approvalPasswordLockedUntil: new Date(Date.now() - 1000) } })
+  const retried = await accept(password)
+  assert.equal(retried.status, 200, JSON.stringify(retried.body))
+  const stored = await User.findById(admin._id).select('+approvalPasswordFailures +approvalPasswordLockedUntil').lean()
+  assert.equal(stored.approvalPasswordFailures, undefined); assert.equal(stored.approvalPasswordLockedUntil, undefined)
+})
+
+test('each 10-point level unlocks one 2% reward for one item, restored when declined or cancelled', async () => {
+  await submit(); await decision()
+  await User.updateOne({ _id: customer._id }, { $set: { loyaltyPoints: 25 } })
+  const summary = await request(app).get('/api/loyalty').set(auth())
+  assert.equal(summary.status, 200)
+  assert.deepEqual([summary.body.level, summary.body.pointsIntoLevel, summary.body.rewardsAvailable], [2, 5, 2])
+  const bookAt = (hours, extra) => request(app).post('/api/requests').set(auth()).send({ ...bookingBody(),
+    startDate: new Date(Date.now() + hours * 3600000).toISOString(), endDate: new Date(Date.now() + (hours + 24) * 3600000).toISOString(), ...extra })
+  const elsewhere = await Product.create({ title: 'Other tripod', category: 'Cameras', description: 'Not in cart', photos: ['/t.jpg'], dailyRate: 500, providerId: admin._id, createdBy: admin._id })
+  assert.equal((await bookAt(72, { loyaltyRewardProductId: String(elsewhere._id) })).status, 400, 'the reward must target a cart item')
+  const first = await bookAt(72, { loyaltyRewardProductId: String(product._id), expectedTotal: 2450 })
+  assert.equal(first.status, 201, JSON.stringify(first.body))
+  assert.equal(first.body.request.total, 2450)
+  assert.equal(first.body.request.items[0].loyaltyDiscount, 50)
+  assert.equal(first.body.request.loyaltyReward.status, 'applied')
+  assert.equal((await bookAt(200, { loyaltyRewardProductId: String(product._id) })).status, 201)
+  const none = await bookAt(400, { loyaltyRewardProductId: String(product._id) })
+  assert.equal(none.status, 409); assert.equal(none.body.code, 'LOYALTY_REWARD_UNAVAILABLE')
+  const used = async () => (await User.findById(customer._id)).loyaltyRewardsUsed
+  assert.equal(await used(), 2)
+  const declined = await request(app).patch(`/api/provider/requests/${first.body.request._id}/items/${product._id}`).set(auth(admin)).send({ decision: 'rejected', reason: 'Scheduled for maintenance.' })
+  assert.equal(declined.status, 200, JSON.stringify(declined.body))
+  assert.equal(await used(), 1)
+  const second = await RentalRequest.findOne({ customerId: customer._id, status: 'pending' })
+  const cancelled = await request(app).post(`/api/requests/${second._id}/cancel`).set(auth()).send({})
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body))
+  assert.equal(await used(), 0)
+  const activity = (await request(app).get('/api/loyalty').set(auth())).body.activity
+  assert.equal(activity.length, 2); assert.ok(activity.every((entry) => entry.type === 'restored'))
+})
+
+test('a request takes items from one shop only; older mixed bookings still show each shop only its own items', async () => {
   const shops = await User.create([
     { username: 'First Shop', email: 'first-shop@example.test', phone: '0771111222', password: passwordHash, role: 'rental_shop', shopStatus: 'approved' },
     { username: 'Second Shop', email: 'second-shop@example.test', phone: '0771111333', password: passwordHash, role: 'rental_shop', shopStatus: 'approved' },
   ])
   await Product.updateOne({ _id: product._id }, { $set: { providerId: shops[0]._id } })
   const second = await Product.create({ title: 'Example tripod', category: 'Cameras', description: 'Tripod fixture', photos: ['/tripod.jpg'], dailyRate: 500, providerId: shops[1]._id, createdBy: admin._id })
+  const sameShop = await Product.create({ title: 'Example lens', category: 'Cameras', description: 'Lens fixture', photos: ['/lens.jpg'], dailyRate: 800, providerId: shops[0]._id, createdBy: admin._id })
   await submit(); await decision()
-  const created = await request(app).post('/api/requests').set(auth()).send({ ...bookingBody(), productIds: [String(product._id), String(second._id)] })
-  assert.equal(created.status, 201)
+  const mixed = await request(app).post('/api/requests').set(auth()).send({ ...bookingBody(), productIds: [String(product._id), String(second._id)] })
+  assert.equal(mixed.status, 409); assert.equal(mixed.body.code, 'MULTIPLE_SHOPS')
+  assert.equal(await RentalRequest.countDocuments(), 0)
+  const together = await request(app).post('/api/requests').set(auth()).send({ ...bookingBody(), productIds: [String(product._id), String(sameShop._id)] })
+  assert.equal(together.status, 201, JSON.stringify(together.body))
+  assert.equal(together.body.request.items.length, 2)
+  // Bookings made before the one-shop rule can still mix providers.
+  await RentalRequest.deleteMany({})
+  await RentalRequest.create({ customerId: customer._id, startDate: new Date(Date.now() + 72 * 3600000), endDate: new Date(Date.now() + 96 * 3600000),
+    deliveryMethod: 'pickup', subtotal: 3000, total: 3000, status: 'pending', items: [[product, shops[0]], [second, shops[1]]].map(([entry, shop]) => ({
+      productId: entry._id, providerId: shop._id, providerRole: 'rental_shop', title: entry.title, rentalAmount: entry.dailyRate })) })
   for (const shop of shops) {
     const result = await request(app).get('/api/provider/requests').set(auth(shop))
     assert.equal(result.body.requests.length, 1)
@@ -187,21 +250,18 @@ test('a mixed-provider booking exposes only each shop own items while admin sees
     assert.equal(result.body.requests[0].items[0].providerId, String(shop._id))
   }
   const adminList = await request(app).get('/api/provider/requests').set(auth(admin))
-  assert.equal(adminList.body.requests[0].items.length, 2)
+  assert.equal(adminList.body.requests.length, 0)
 })
 
-test('legacy orphaned provider references remain visible and reviewable by an administrator without reassigning ownership', async () => {
+test('an administrator cannot decide items of a shop that was removed, and ownership is never reassigned', async () => {
   const shop = await User.create({ username: 'Previous Shop', email: 'previous-shop@example.test', phone: '0771111222', password: passwordHash, role: 'rental_shop', shopStatus: 'approved' })
   await Product.updateOne({ _id: product._id }, { $set: { providerId: shop._id } })
   await submit(); await decision()
   const created = await book(), id = created.body.request._id
   await User.deleteOne({ _id: shop._id })
-  const result = await request(app).get('/api/provider/requests').set(auth(admin))
-  assert.equal(result.body.requests[0]._id, id)
-  assert.equal(result.body.requests[0].items[0].providerId, String(shop._id))
-  const reviewed = await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted' })
-  assert.equal(reviewed.status, 200)
-  assert.equal((await RentalRequest.findById(id)).status, 'confirmed')
+  const reviewed = await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted', password })
+  assert.equal(reviewed.status, 404)
+  assert.equal((await RentalRequest.findById(id)).status, 'pending')
   assert.equal(String((await Product.findById(product._id)).providerId), String(shop._id))
 })
 
@@ -248,25 +308,31 @@ test('password confirmation is rate limited without storing supplied passwords',
   assert.equal(JSON.stringify(await VerificationRate.find().lean()).includes('wrong-password'), false)
 })
 
-test('new approved rentals require readiness, email verification, physical handover and inspected return', async () => {
+test('NIC-approved bookings require staff pickup and customer-verified shop return before completion', async () => {
   await submit(); await decision(); const created = await book(), id = created.body.request._id
   assert.equal(created.status, 201)
-  const accepted = await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted' })
+  const accepted = await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted', password })
   assert.equal(accepted.status, 200, JSON.stringify(accepted.body))
-  assert.equal((await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted' })).status, 409)
+  assert.equal((await request(app).patch(`/api/provider/requests/${id}/items/${product._id}`).set(auth(admin)).send({ decision: 'accepted', password })).status, 409)
   assert.equal((await request(app).post(`/api/requests/${id}/payments`).set(auth()).set('Idempotency-Key', 'identity-workflow-test-0001').send({})).status, 200)
-  assert.equal((await request(app).post(`/api/requests/${id}/pickup/send`).set(auth()).send({})).body.code, 'PICKUP_NOT_READY')
+  assert.equal((await request(app).post(`/api/requests/${id}/pickup/send`).set(auth()).send({})).body.code, 'WRONG_SENDER')
+  assert.equal((await request(app).post(`/api/admin/rentals/${id}/verification/pickup/send`).set(auth(admin)).send({})).body.code, 'PICKUP_NOT_READY')
   assert.equal((await request(app).post(`/api/admin/rentals/${id}/ready`).set(auth(admin)).send({})).status, 200)
-  const pickup = await request(app).post(`/api/requests/${id}/pickup/send`).set(auth()).send({})
-  const verified = await request(app).post(`/api/requests/${id}/pickup/verify`).set(auth()).send({ challengeId: pickup.body.challengeId, code: emails.at(-1).code })
-  assert.equal(verified.body.rental.status, 'confirmed')
-  assert.equal((await request(app).post(`/api/admin/rentals/${id}/handover/confirm`).set(auth(admin)).send({})).body.rental.status, 'active')
-  const returned = await request(app).post(`/api/admin/rentals/${id}/verification/return/send`).set(auth(admin)).send({})
-  const returnVerified = await request(app).post(`/api/admin/rentals/${id}/verification/return/verify`).set(auth(admin)).send({ challengeId: returned.body.challengeId, code: emails.at(-1).code })
-  assert.equal(returnVerified.body.rental.status, 'active')
+  const pickup = await request(app).post(`/api/admin/rentals/${id}/verification/pickup/send`).set(auth(admin)).send({})
+  assert.equal(pickup.status, 200)
+  assert.equal(emails.at(-1).email, customer.email)
+  const verified = await request(app).post(`/api/admin/rentals/${id}/verification/pickup/verify`).set(auth(admin)).send({ challengeId: pickup.body.challengeId, code: emails.at(-1).code })
+  assert.equal(verified.body.rental.status, 'active')
+  assert.equal((await request(app).post(`/api/admin/rentals/${id}/return/confirm`).set(auth(admin)).send({})).status, 409)
+  const returned = await request(app).post(`/api/requests/${id}/return/send`).set(auth()).send({ providerId: admin._id })
+  assert.equal(returned.status, 200)
+  assert.equal(emails.at(-1).email, admin.email)
+  assert.equal((await RentalRequest.findById(id)).status, 'active')
   assert.equal((await Product.findById(product._id)).rentalSlots.length, 1)
-  assert.equal((await request(app).post(`/api/admin/rentals/${id}/return/confirm`).set(auth(admin)).send({})).status, 400)
-  assert.equal((await request(app).post(`/api/admin/rentals/${id}/return/confirm`).set(auth(admin)).send({ inspectionNote: 'Received all items, inspected camera and lens; no visible damage.' })).body.rental.status, 'returned')
+  const receipt = returned.body.handovers.find((handover) => handover.providerId === String(admin._id))
+  const returnVerified = await request(app).post(`/api/requests/${id}/return/verify`).set(auth()).send({ challengeId: receipt.challengeId, code: emails.at(-1).code })
+  assert.equal(returnVerified.status, 200, JSON.stringify(returnVerified.body))
+  assert.equal((await RentalRequest.findById(id)).status, 'returned')
   assert.equal((await Product.findById(product._id)).rentalSlots.length, 0)
   assert.equal((await request(app).post(`/api/admin/rentals/${id}/complete`).set(auth(admin)).send({})).status, 200)
   assert.equal((await RentalRequest.findById(id)).status, 'completed')

@@ -1,14 +1,19 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { readJsonResponse } from '../../../services/http.js'
-import { UiIcon } from '../../../components/ui/UiIcon.jsx'
+import GoogleSignIn from './GoogleSignIn.jsx'
+import { PasswordToggle } from './PasswordFields.jsx'
 
-export default function LoginForm({ onRegister, onLoginSuccess }) {
+export default function LoginForm({ onRegister, onLoginSuccess, onForgotPassword, notice }) {
   const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [googleBusy, setGoogleBusy] = useState(false)
+  const inFlight = useRef(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (inFlight.current || googleBusy) return
+    inFlight.current = true
     setMessage('')
     const formData = new FormData(event.currentTarget)
 
@@ -24,6 +29,7 @@ export default function LoginForm({ onRegister, onLoginSuccess }) {
     } catch (error) {
       setMessage(error.message || 'Could not connect to the server.')
     } finally {
+      inFlight.current = false
       setIsSubmitting(false)
     }
   }
@@ -32,90 +38,56 @@ export default function LoginForm({ onRegister, onLoginSuccess }) {
     <div className="login-panel">
       <div className="login-form-content">
         <div className="login-heading">
-          <span className="login-eyebrow">WELCOME BACK</span>
-          <h2>
-            Welcome back.
-            <br />
-            <em>Make yourself at home.</em>
-          </h2>
+          <h2>Welcome back</h2>
+          <p>Sign in to your RentEase account.</p>
         </div>
 
-        <div className="login-social-row">
-          <button type="button" className="login-social-button">
-            <span className="google-mark">G</span>Continue with Google
-          </button>
-          <button type="button" className="login-social-button">
-            <span className="facebook-mark">f</span>Continue with Facebook
-          </button>
-        </div>
-        <div className="re-auth-assurance">
-          <UiIcon name="shield" size={16} />
-          Secure access to your rental account
-        </div>
+        {notice?.message && <div className="auth-success-banner" role="status"><span aria-hidden="true">✓</span><p>{notice.message}</p></div>}
+        <GoogleSignIn onLoginSuccess={onLoginSuccess} disabled={isSubmitting} onBusyChange={setGoogleBusy} />
 
-        <form className="login-form" onSubmit={handleSubmit}>
-          <label htmlFor="login-email">Email address</label>
+        <form className="login-form" onSubmit={handleSubmit} aria-busy={isSubmitting}>
+          <label htmlFor="login-email">Email</label>
           <div className="login-input-wrap">
-            <UiIcon name="mail" size={18} />
             <input
               id="login-email"
               name="email"
               type="email"
               placeholder="you@example.com"
               autoComplete="email"
+              defaultValue={notice?.email || ''}
+              maxLength={254}
+              disabled={isSubmitting || googleBusy}
               required
             />
           </div>
           <div className="login-password-label">
             <label htmlFor="login-password">Password</label>
-            <a href="/forgot-password">Forgot password?</a>
+            <a href="/forgot-password" onClick={onForgotPassword}>Forgot password?</a>
           </div>
           <div className="login-input-wrap">
-            <UiIcon name="lock" size={18} />
             <input
               id="login-password"
               name="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
               autoComplete="current-password"
+              maxLength={128}
+              disabled={isSubmitting || googleBusy}
               required
             />
-            <button
-              type="button"
-              className="login-password-toggle"
-              onClick={() => setShowPassword((shown) => !shown)}
-            >
-              {showPassword ? 'Hide' : 'Show'}
-            </button>
+            <PasswordToggle visible={showPassword} onToggle={() => setShowPassword((shown) => !shown)} />
           </div>
-          <button type="submit" className="login-submit" disabled={isSubmitting}>
-            <span className="login-button-label">
-              {isSubmitting ? 'Signing you in...' : 'Sign in'}
-            </span>
-            <UiIcon name="arrow" size={18} />
-            {isSubmitting && (
-              <span className="login-entry-scene" aria-hidden="true">
-                <i className="login-entry-door" />
-                <i className="login-entry-person" />
-              </span>
-            )}
+          {message && <p className="auth-inline-error" role="alert">{message}</p>}
+          <button type="submit" className="login-submit" disabled={isSubmitting || googleBusy}>
+            {isSubmitting && <span className="register-spinner" aria-hidden="true" />}
+            {isSubmitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
-        {message && (
-          <p className="login-feedback" role="status">
-            {message}
-          </p>
-        )}
         <p className="login-switch-copy">
-          New around here?{' '}
-          <a href="/register" onClick={onRegister}>
-            Create an account
-          </a>
+          New to RentEase? <a href="/register" onClick={onRegister}>Create an account</a>
         </p>
         <p className="login-terms">
-          By continuing, you agree to RentEase’s <a href="/terms">Terms of Service</a> and{' '}
-          <a href="/privacy">Privacy Policy</a>.
+          By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.
         </p>
       </div>
     </div>

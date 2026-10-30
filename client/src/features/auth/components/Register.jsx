@@ -1,330 +1,112 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { UiIcon } from '../../../components/ui/UiIcon.jsx'
-import { readJsonResponse } from '../../../services/http.js'
+import { authPost, passwordError, readRegistration, saveRegistration } from '../services/auth.js'
+import { PasswordFields } from './PasswordFields.jsx'
+import { OtpVerification } from './OtpVerification.jsx'
 
-function Register({ onLogin }) {
-  const [step, setStep] = useState(1)
-  const [details, setDetails] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    accountType: 'user',
-    shopName: '',
-  })
-  const [otp, setOtp] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [message, setMessage] = useState('')
-  const [isError, setIsError] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+const emptyDetails = { name: '', email: '', phone: '', accountType: 'user', shopName: '' }
 
-  const updateDetails = (event) => {
-    setDetails((current) => ({ ...current, [event.target.name]: event.target.value }))
+export default function Register({ onLogin, onComplete }) {
+  const [saved] = useState(readRegistration)
+  const [step, setStep] = useState(saved?.registrationToken ? 3 : saved ? 2 : 1)
+  const [details, setDetails] = useState(saved?.details || emptyDetails)
+  const [challenge, setChallenge] = useState(saved?.challenge || null)
+  const [registrationToken, setRegistrationToken] = useState(saved?.registrationToken || '')
+  const [message, setMessage] = useState(''), [busy, setBusy] = useState(false)
+  const [retryAt, setRetryAt] = useState(0)
+  const inFlight = useRef(false)
+  const update = (event) => { setDetails((current) => ({ ...current, [event.target.name]: event.target.value })); setMessage('') }
+  const send = async () => {
+    const normalized = { ...details, name: details.name.trim(), email: details.email.trim().toLowerCase(), phone: details.phone.trim() }
+    if (normalized.phone.length < 7 || !/^[+\d().\s-]+$/.test(normalized.phone))
+      throw new Error('Enter a valid contact phone number.')
+    const result = await authPost('register/send-otp', {
+      username: normalized.name, email: normalized.email, phone: normalized.phone,
+      accountType: normalized.accountType, shopName: normalized.shopName,
+    })
+    setDetails(normalized); setChallenge(result); setRegistrationToken('')
+    saveRegistration({ details: normalized, challenge: result, expiresAt: result.expiresAt })
+    return result
   }
-
-  const handleNext = async (event) => {
+  const next = async (event) => {
     event.preventDefault()
-    setMessage('')
-    setIsError(false)
-
-    try {
-      setIsSubmitting(true)
-      const response = await fetch('/api/auth/register/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: details.name,
-          email: details.email,
-          phone: details.phone,
-          accountType: details.accountType,
-          shopName: details.shopName,
-        }),
-      })
-      const result = await readJsonResponse(response, 'Could not send verification code.')
-
-      setMessage(result.message)
-      setStep(2)
-    } catch (error) {
-      setIsError(true)
-      setMessage(error.message || 'Could not connect to the server.')
-    } finally {
-      setIsSubmitting(false)
-    }
+    if (inFlight.current) return
+    if (Date.now() < retryAt) { setMessage(`Please wait ${Math.ceil((retryAt - Date.now()) / 1000)} seconds before requesting another code.`); return }
+    inFlight.current = true; setBusy(true); setMessage('')
+    try { await send(); setStep(2) }
+    catch (error) { setMessage(error.message); if (error.retryAfter) setRetryAt(Date.now() + error.retryAfter * 1000) }
+    finally { inFlight.current = false; setBusy(false) }
   }
-
-  const handleVerifyOtp = async (event) => {
+  const complete = async (event) => {
     event.preventDefault()
-    setMessage('')
-    setIsError(false)
-
+    if (inFlight.current) return
+    const form = event.currentTarget, data = new FormData(form)
+    const password = data.get('password'), confirmPassword = data.get('confirmPassword')
+    const validation = passwordError(password, confirmPassword)
+    if (validation) { setMessage(validation); return }
+    inFlight.current = true; setBusy(true); setMessage('')
     try {
-      setIsSubmitting(true)
-      const response = await fetch('/api/auth/register/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: details.email, otp }),
-      })
-      const result = await readJsonResponse(response, 'Code verification failed.')
-
-      setMessage(result.message)
-      setStep(3)
-    } catch (error) {
-      setIsError(true)
-      setMessage(error.message || 'Could not connect to the server.')
-    } finally {
-      setIsSubmitting(false)
-    }
+      const result = await authPost('register/complete', { email: details.email, password, confirmPassword, registrationToken })
+      form.reset(); saveRegistration(null)
+      onComplete({ email: details.email, message: result.message })
+    } catch (error) { setMessage(error.message) }
+    finally { inFlight.current = false; setBusy(false) }
   }
-
-  const handleRegister = async (event) => {
-    event.preventDefault()
-    setMessage('')
-    setIsError(false)
-
-    const form = event.currentTarget
-    const password = new FormData(form).get('password')
-
-    try {
-      setIsSubmitting(true)
-      const response = await fetch('/api/auth/register/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: details.email, password }),
-      })
-      const result = await readJsonResponse(response, 'Registration failed.')
-
-      setMessage(result.message || 'Account created successfully. You can now sign in.')
-      form.reset()
-      setDetails({ name: '', email: '', phone: '', accountType: 'user', shopName: '' })
-      setOtp('')
-      setStep(1)
-    } catch (error) {
-      setIsError(true)
-      setMessage(error.message || 'Could not connect to the server.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const goBack = (previousStep) => {
-    setMessage('')
-    setIsError(false)
-    setStep(previousStep)
-  }
-
-  const stepDescription = [
-    'First, tell us how to reach you.',
-    `Enter the verification code sent to ${details.email}.`,
-    'Your email is verified. Now choose a password.',
-  ][step - 1]
-
-  return (
-    <div className="login-panel">
-      <div className="login-form-content">
-        <div className="login-heading">
-          <span className="login-eyebrow">START YOUR JOURNEY · STEP {step} OF 3</span>
-          <h2>
-            Create an account
-            <br />
-            with <em>RentEase.</em>
-          </h2>
-          <p>{stepDescription}</p>
-        </div>
-
-        <div className="login-social-row">
-          <button type="button" className="login-social-button">
-            <span className="google-mark">G</span>Continue with Google
-          </button>
-          <button type="button" className="login-social-button">
-            <span className="facebook-mark">f</span>Continue with Facebook
-          </button>
-        </div>
-        <div className="re-registration-progress" aria-label={`Registration step ${step} of 3`}>
-          {[1, 2, 3].map((number) => (
-            <span key={number} className={number <= step ? 'is-complete' : ''} />
-          ))}
-        </div>
-
-        {step === 1 && (
-          <form className="login-form" onSubmit={handleNext}>
-            <label htmlFor="register-name">User name</label>
-            <div className="login-input-wrap">
-              <UiIcon name="user" size={18} />
-              <input
-                id="register-name"
-                name="name"
-                type="text"
-                placeholder="Your name"
-                autoComplete="name"
-                value={details.name}
-                onChange={updateDetails}
-                required
-              />
-            </div>
-            <label htmlFor="register-email">Email address</label>
-            <div className="login-input-wrap">
-              <UiIcon name="mail" size={18} />
-              <input
-                id="register-email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-                value={details.email}
-                onChange={updateDetails}
-                required
-              />
-            </div>
-            <label htmlFor="register-phone">Phone number</label>
-            <div className="login-input-wrap">
-              <UiIcon name="phone" size={18} />
-              <input
-                id="register-phone"
-                name="phone"
-                type="tel"
-                placeholder="Your phone number"
-                autoComplete="tel"
-                value={details.phone}
-                onChange={updateDetails}
-                required
-              />
-            </div>
-            <label htmlFor="register-account-type">I want to join as</label>
-            <select
-              id="register-account-type"
-              name="accountType"
-              className="admin-form-control"
-              value={details.accountType}
-              onChange={updateDetails}
-            >
-              <option value="user">Customer</option>
-              <option value="rental_shop">Rental shop owner</option>
-            </select>
-            {details.accountType === 'rental_shop' && (
-              <>
-                <label htmlFor="register-shop-name">Rental shop name</label>
-                <div className="login-input-wrap">
-                  <UiIcon name="store" size={18} />
-                  <input
-                    id="register-shop-name"
-                    name="shopName"
-                    type="text"
-                    placeholder="Your shop name"
-                    value={details.shopName}
-                    onChange={updateDetails}
-                    required
-                  />
-                </div>
-              </>
-            )}
-            <button type="submit" className="login-submit" disabled={isSubmitting}>
-              <span className="login-button-label">
-                {isSubmitting && <span className="register-spinner" aria-hidden="true" />}
-                {isSubmitting ? 'Sending code' : 'Next'}
-              </span>
-              <span aria-hidden="true">→</span>
-            </button>
-          </form>
-        )}
-
-        {step === 2 && (
-          <form className="login-form" onSubmit={handleVerifyOtp}>
-            <label htmlFor="register-otp">Email verification code</label>
-            <div className="login-input-wrap">
-              <UiIcon name="shield" size={18} />
-              <input
-                id="register-otp"
-                name="otp"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                value={otp}
-                onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="Enter 6-digit code"
-                required
-              />
-            </div>
-            <div className="register-step-actions">
-              <button type="button" className="register-back" onClick={() => goBack(1)}>
-                Back
-              </button>
-              <button type="submit" className="login-submit" disabled={isSubmitting}>
-                <span className="login-button-label">
-                  {isSubmitting && <span className="register-spinner" aria-hidden="true" />}
-                  {isSubmitting ? 'Verifying code' : 'Verify email'}
-                </span>
-                <span aria-hidden="true">→</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {step === 3 && (
-          <form className="login-form" onSubmit={handleRegister}>
-            <div className="register-summary">
-              <span>{details.name}</span>
-              <span>{details.email}</span>
-              <span>{details.phone}</span>
-            </div>
-            <div className="login-password-label">
-              <label htmlFor="register-password">Password</label>
-            </div>
-            <div className="login-input-wrap">
-              <UiIcon name="lock" size={18} />
-              <input
-                id="register-password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="At least 10 characters"
-                autoComplete="new-password"
-                minLength={10}
-                required
-              />
-              <button
-                type="button"
-                className="login-password-toggle"
-                onClick={() => setShowPassword((shown) => !shown)}
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            <div className="register-step-actions">
-              <button type="button" className="register-back" onClick={() => goBack(2)}>
-                Back
-              </button>
-              <button type="submit" className="login-submit" disabled={isSubmitting}>
-                <span className="login-button-label">
-                  {isSubmitting && <span className="register-spinner" aria-hidden="true" />}
-                  {isSubmitting ? 'Creating account' : 'Create account'}
-                </span>
-                <span aria-hidden="true">↗</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {message && (
-          <p
-            className={`login-feedback${isError ? ' is-error' : ''}`}
-            role={isError ? 'alert' : 'status'}
-          >
-            {message}
-          </p>
-        )}
-        <p className="login-switch-copy">
-          Already have an account?{' '}
-          <a href="/login" onClick={onLogin}>
-            Sign in
-          </a>
-        </p>
-        <p className="login-terms">
-          By continuing, you agree to RentEase’s <a href="/terms">Terms of Service</a> and{' '}
-          <a href="/privacy">Privacy Policy</a>.
-        </p>
-      </div>
+  return <div className="login-panel"><div className="login-form-content">
+    <div className="login-heading">
+      <span className="login-step">Step {step} of 3</span>
+      <h2>{step === 1 ? 'Create your account' : step === 2 ? 'Check your email' : 'Set your password'}</h2>
+      {step === 2 && <p>Enter the 6-digit code we sent to <strong>{details.email}</strong>.</p>}
     </div>
-  )
+    <div className="re-registration-progress" aria-hidden="true">
+      {[1, 2, 3].map((number) => <span key={number} className={number <= step ? 'is-complete' : ''} />)}
+    </div>
+    {step === 1 && <form className="login-form" onSubmit={next} aria-busy={busy}>
+      <fieldset className="auth-account-type" disabled={busy}>
+        <legend>I want to</legend>
+        {[['user', 'Rent items', 'user'], ['rental_shop', 'List my shop', 'store']].map(([value, title, icon]) =>
+          <label key={value} className={details.accountType === value ? 'is-selected' : ''}>
+            <input type="radio" name="accountType" value={value} checked={details.accountType === value} onChange={update} />
+            <UiIcon name={icon} size={20} /><span>{title}</span>
+          </label>)}
+      </fieldset>
+      <label htmlFor="register-name">Username</label>
+      <div className="login-input-wrap">
+        <input id="register-name" name="name" autoComplete="username" value={details.name} onChange={update} minLength={2} maxLength={50} required disabled={busy} />
+      </div>
+      <label htmlFor="register-email">Email</label>
+      <div className="login-input-wrap">
+        <input id="register-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" value={details.email} onChange={update} maxLength={254} required disabled={busy} />
+      </div>
+      <label htmlFor="register-phone">Phone number</label>
+      <div className="login-input-wrap">
+        <input id="register-phone" name="phone" type="tel" autoComplete="tel" placeholder="07X XXX XXXX" value={details.phone} onChange={update} minLength={7} maxLength={24} required disabled={busy} />
+      </div>
+      {details.accountType === 'rental_shop' && <>
+        <label htmlFor="register-shop-name">Shop name</label>
+        <div className="login-input-wrap">
+          <input id="register-shop-name" name="shopName" value={details.shopName} onChange={update} maxLength={100} required disabled={busy} aria-describedby="register-shop-hint" />
+        </div><small id="register-shop-hint" className="auth-field-hint">Shop accounts are reviewed by our team before you can sign in.</small>
+      </>}
+      {message && <p className="auth-inline-error" role="alert">{message}</p>}
+      <button className="login-submit" disabled={busy}>{busy && <span className="register-spinner" aria-hidden="true" />}{busy ? 'Sending code…' : 'Continue'}</button>
+    </form>}
+    {step === 2 && <OtpVerification email={details.email} challenge={challenge}
+      onVerify={(otp) => authPost('register/verify-otp', { email: details.email, otp })}
+      onVerified={(result) => {
+        setRegistrationToken(result.registrationToken)
+        saveRegistration({ details, challenge, registrationToken: result.registrationToken, expiresAt: result.expiresAt })
+        setMessage(''); setStep(3)
+      }} onResend={send} onBack={() => { saveRegistration(null); setStep(1); setMessage('') }} />}
+    {step === 3 && <form className="login-form" onSubmit={complete} aria-busy={busy} onChange={() => setMessage('')}>
+      <div className="auth-verified-email"><UiIcon name="check" size={16} />{details.email}</div>
+      <PasswordFields disabled={busy} error={message} />
+      {message && <p className="auth-inline-error" role="alert">{message}</p>}
+      <button className="login-submit" disabled={busy}>{busy && <span className="register-spinner" aria-hidden="true" />}{busy ? 'Creating account…' : 'Create account'}</button>
+      <button type="button" className="register-back" disabled={busy} onClick={() => { setStep(2); setMessage('') }}>Request a new code</button>
+    </form>}
+    {message && step === 2 && <p className="auth-inline-error" role="alert">{message}</p>}
+    <p className="login-switch-copy">Already have an account? <a href="/login" onClick={onLogin}>Sign in</a></p>
+    <p className="login-terms">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
+  </div></div>
 }
-
-export default Register

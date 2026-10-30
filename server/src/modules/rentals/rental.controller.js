@@ -8,6 +8,7 @@ import { AuditLog } from '../admin/audit-log.model.mjs'
 import { Coupon } from '../payments/coupon.model.mjs'
 import { customerRentalFields, customerRentalViews } from './customer-rentals.service.mjs'
 import { cancelRental } from './cancellation.service.mjs'
+import { cancelDeliveryTasks } from '../delivery/delivery-task.service.mjs'
 import { verificationError } from '../../middleware/workflow-error.mjs'
 import { inventoryAvailability } from '../products/availability.service.mjs'
 import { decideRentalItem } from './decision.service.mjs'
@@ -26,7 +27,21 @@ import { DeliveryLocation } from '../delivery/delivery-location.model.mjs'
 
 import { notify } from '../notifications/rental-notifications.service.mjs'
 import { priceCoupon } from '../payments/coupon.service.mjs'
-import { publicRequest, canManageRequest, changeStatus } from './rental-workflow.service.mjs'
+import {
+  publicRequest,
+  canManageRequest,
+  changeStatus,
+  controlsWholeRequest,
+  SHARED_BOOKING_MESSAGE,
+} from './rental-workflow.service.mjs'
+import { earnRentalCommissions } from '../payments/commission.service.mjs'
+import { fromOneShop, MULTIPLE_SHOPS_MESSAGE } from './single-shop.mjs'
+import {
+  loyaltyRewardAmount,
+  loyaltySummary,
+  rewardAvailableFilter,
+  REWARD_PERCENT,
+} from '../loyalty/loyalty.service.mjs'
 
 export const createRental = async (req, res) => {
   const { productIds, startDate: startValue, endDate: endValue, deliveryMethod } = req.body
@@ -43,6 +58,9 @@ export const createRental = async (req, res) => {
     start < new Date(new Date().setHours(0, 0, 0, 0))
   )
     return res.status(400).json({ message: 'Choose valid rental start and end dates.' })
+  // Hourly bookings carry a time; one that already started would bill hours nobody can use.
+  if (billingUnit === 'hour' && start.getTime() < Date.now() - 10 * 60_000)
+    return res.status(400).json({ message: 'Choose a start time that has not passed yet.' })
   if (!['pickup', 'partner'].includes(deliveryMethod))
     return res.status(400).json({ message: 'Choose pickup or delivery partner.' })
   if (req.user.role !== 'user')
@@ -60,6 +78,8 @@ export const createRental = async (req, res) => {
   )
   if (products.length !== ids.length)
     return res.status(409).json({ message: 'One or more listings are no longer available.' })
+  if (!fromOneShop(products))
+    return res.status(409).json({ code: 'MULTIPLE_SHOPS', message: MULTIPLE_SHOPS_MESSAGE })
   if (
     products.some(
       (p) =>
@@ -97,12 +117,25 @@ export const createRental = async (req, res) => {
     } catch (error) {
       return res
         .status(error.status || 502)
-        .json({ message: error.message || 'Could not calculate a delivery route.' })
+        .json({ message: error.status ? error.message : 'Could not calculate a delivery route. Try again shortly.' })
     }
   }
   const dayCount = Math.ceil((end - start) / 86400000)
   const billableHours = Math.ceil((end - start) / 3600000)
-  const priceForDays = (product) => rentalAmount(product, { dayCount, billableHours, billingUnit })
+  const fullPrice = (product) => rentalAmount(product, { dayCount, billableHours, billingUnit })
+  // A loyalty level reward takes 2% off one chosen item; it is claimed in the transaction below.
+  const rewardProductId = req.body.loyaltyRewardProductId ? String(req.body.loyaltyRewardProductId) : ''
+  if (rewardProductId && !ids.includes(rewardProductId))
+    return res.status(400).json({ message: 'Choose an item in your cart for your loyalty reward.' })
+  if (rewardProductId && loyaltySummary(eligibility.user).rewardsAvailable < 1)
+    return res.status(409).json({
+      code: 'LOYALTY_REWARD_UNAVAILABLE',
+      message: 'You have no loyalty reward available. Reach the next level to unlock one.',
+    })
+  const rewardFor = (product) =>
+    String(product._id) === rewardProductId ? loyaltyRewardAmount(fullPrice(product)) : 0
+  const priceForDays = (product) => fullPrice(product) - rewardFor(product)
+  const rewardProduct = products.find((product) => String(product._id) === rewardProductId)
   const subtotal = products.reduce((sum, product) => sum + priceForDays(product), 0)
   let coupon = null,
     discountAmount = 0
@@ -133,15 +166,21 @@ export const createRental = async (req, res) => {
           'Your profile or default address changed. Review your booking and try again.',
         )
       const locked = await User.updateOne(
-        { _id: req.user._id, __v: eligibility.user.__v },
-        { $inc: { __v: 1 } },
+        {
+          _id: req.user._id,
+          __v: eligibility.user.__v,
+          ...(rewardProduct ? rewardAvailableFilter : {}),
+        },
+        { $inc: { __v: 1, ...(rewardProduct ? { loyaltyRewardsUsed: 1 } : {}) } },
         { session },
       )
       if (!locked.modifiedCount)
         throw identityError(
           409,
           'ELIGIBILITY_CHANGED',
-          'Your profile changed. Review your verification and try again.',
+          rewardProduct
+            ? 'Your profile or loyalty reward changed. Review your booking and try again.'
+            : 'Your profile changed. Review your verification and try again.',
         )
       request = (
         await RentalRequest.create(
@@ -151,6 +190,7 @@ export const createRental = async (req, res) => {
               items: products.map((product) => ({
                 productId: product._id,
                 providerId: product.providerId?._id || product.createdBy,
+                providerRole: product.providerId?.role,
                 title: product.title,
                 dailyRate: product.dailyRate,
                 hourlyRate: product.hourlyRate,
@@ -158,8 +198,20 @@ export const createRental = async (req, res) => {
                 billingUnit,
                 billableHours,
                 rentalAmount: priceForDays(product),
+                ...(rewardFor(product) ? { loyaltyDiscount: rewardFor(product) } : {}),
                 depositAmount: product.depositAmount || 0,
               })),
+              ...(rewardProduct
+                ? {
+                    loyaltyReward: {
+                      productId: rewardProduct._id,
+                      title: rewardProduct.title,
+                      percent: REWARD_PERCENT,
+                      amount: rewardFor(rewardProduct),
+                      status: 'applied',
+                    },
+                  }
+                : {}),
               startDate: start,
               endDate: end,
               durationHours: billableHours,
@@ -245,10 +297,9 @@ export const createRental = async (req, res) => {
             'This coupon is no longer available. Remove it and try again.',
           )
       }
+      // Only the shop (or administrator) that published each item hears about the request.
       const providerIds = [...new Set(request.items.map((item) => String(item.providerId)))]
-      const admins = await User.find({ role: 'admin', active: true }).select('_id').session(session)
-      const recipients = new Set([...providerIds, ...admins.map((admin) => String(admin._id))])
-      for (const userId of recipients)
+      for (const userId of providerIds)
         await Notification.create(
           [
             {
@@ -373,6 +424,7 @@ export const decideProviderItem = async (req, res) => {
         productId: req.params.productId,
         decision: req.body.decision,
         reason: req.body.reason,
+        password: req.body.password,
       }),
     )
   } catch (error) {
@@ -393,6 +445,8 @@ export const updateRentalStatus = async (req, res) => {
   const request = await RentalRequest.findById(req.params.requestId)
   if (!request || !canManageRequest(request, req.user))
     return res.status(404).json({ message: 'Rental booking not found.' })
+  if (!controlsWholeRequest(request, req.user))
+    return res.status(403).json({ message: SHARED_BOOKING_MESSAGE })
   if (status === 'cancelled') {
     try {
       const updated = await cancelRental({
@@ -410,6 +464,18 @@ export const updateRentalStatus = async (req, res) => {
       return verificationError(error, req, res, () => {})
     }
   }
+  // A dispute hides the trip from the rider and blocks its handover codes, which would strand
+  // the items and lock the rider. Let the rider finish the handover first.
+  if (
+    status === 'disputed' &&
+    request.items.some((item) =>
+      ['picked_up', 'on_the_way', 'collected', 'returning'].includes(item.deliveryStatus),
+    )
+  )
+    return res.status(409).json({
+      message:
+        'A delivery partner is carrying these items. Raise the dispute once the handover is verified.',
+    })
   if (status === 'completed' && !request.returnVerifiedAt)
     return res.status(409).json({
       message: 'The return must be verified by an administrator before completing this rental.',
@@ -426,7 +492,22 @@ export const updateRentalStatus = async (req, res) => {
   } catch (error) {
     return res.status(error.status || 400).json({ message: error.message })
   }
-  await request.save()
+  if (status === 'completed') {
+    // Completion earns the shop commission, so both writes must succeed together.
+    await requireTransactions()
+    await mongoose.connection.transaction(async (session) => {
+      await request.save({ session })
+      await earnRentalCommissions(request, session)
+    })
+  } else if (status === 'disputed') {
+    // A disputed booking never resumes delivery, so release any rider still holding the trip;
+    // otherwise the trip disappears from their screen while it keeps them from accepting work.
+    await requireTransactions()
+    await mongoose.connection.transaction(async (session) => {
+      await request.save({ session })
+      await cancelDeliveryTasks(request._id, session, 'disputed')
+    })
+  } else await request.save()
   if (['completed', 'cancelled', 'disputed'].includes(status))
     await DeliveryLocation.deleteMany({ rentalId: request._id })
   const customer = await User.findById(request.customerId).select('email username phone')

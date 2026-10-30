@@ -95,7 +95,7 @@ a {
 }
 
 .top-note {
-  font-size: 13px;
+  font-size: 14px;
   color: #777d70;
 }
 
@@ -158,7 +158,7 @@ a {
 }
 
 .eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   font-weight: 800;
   color: #87966f;
@@ -195,7 +195,7 @@ a {
   flex-wrap: wrap;
   margin-top: 32px;
   color: #f0f2eb;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .visual-points span::before {
@@ -205,7 +205,7 @@ a {
 }
 
 .visual-caption {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   border-top: 1px solid #ffffff40;
   margin-top: 38px;
@@ -247,7 +247,7 @@ a {
 }
 
 .form-subtitle {
-  font-size: 13px;
+  font-size: 14px;
   color: #858a7e;
   margin: 0 0 20px;
 }
@@ -288,11 +288,11 @@ a {
 }
 
 .role-option b {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .role-option small {
-  font-size: 10px;
+  font-size: 12px;
   color: #858b7c;
   margin-top: 3px;
 }
@@ -313,7 +313,7 @@ a {
   border: 1px solid #e2e4dc;
   border-radius: 9px;
   color: #3f443b;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   display: flex;
   align-items: center;
@@ -338,7 +338,7 @@ a {
   align-items: center;
   gap: 12px;
   color: #9a9d92;
-  font-size: 10px;
+  font-size: 12px;
   margin: 20px 0;
 }
 
@@ -362,7 +362,7 @@ a {
 .auth-label {
   display: grid;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #62675b;
 }
@@ -392,7 +392,7 @@ a {
   min-width: 0;
   border: 0;
   outline: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: #292e26;
   background: transparent;
 }
@@ -404,14 +404,14 @@ a {
 .password-toggle {
   border: 0;
   background: none;
-  font-size: 10px;
+  font-size: 12px;
   color: #667d50;
   font-weight: 700;
 }
 
 .password-tip {
   color: #9a9f94;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: -7px;
 }
 
@@ -425,7 +425,7 @@ a {
   background: #fcf1ee;
   color: #914637;
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.5;
 }
 
@@ -440,7 +440,7 @@ a {
   border-radius: 8px;
   background: #6b8058;
   color: white;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
   margin-top: 2px;
   transition: 0.2s;
@@ -459,17 +459,17 @@ a {
   text-align: center;
   margin: 18px 0 0;
   color: #858a7f;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .switch-copy .text-button {
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .terms-copy {
   text-align: center;
   color: #a0a398;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.65;
   margin: 13px 0 0;
 }
@@ -486,7 +486,7 @@ a {
   align-items: center;
   justify-content: space-between;
   color: #92978b;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.04em;
 }
 
@@ -552,7 +552,7 @@ a {
   border-radius: 99px;
   background: #eff4e9;
   color: #5d744a;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
@@ -565,7 +565,7 @@ a {
   display: grid;
   place-items: center;
   color: #74865f;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
 }
 
@@ -607,7 +607,7 @@ a {
   }
 
   .visual-copy p {
-    font-size: 12px;
+    font-size: 13px;
     margin: 5px 0;
   }
 
@@ -627,7 +627,7 @@ a {
 
   .auth-footer {
     gap: 12px;
-    font-size: 8px;
+    font-size: 10.5px;
   }
 }
 
@@ -645,7 +645,7 @@ a {
   }
 
   .top-note {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .auth-grid {

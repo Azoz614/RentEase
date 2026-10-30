@@ -36,6 +36,8 @@ const productSchema = new mongoose.Schema(
       },
     ],
     active: { type: Boolean, default: true, index: true },
+    // Set when an administrator removes a listing; only an administrator may republish it.
+    adminDisabled: { type: Boolean, default: false },
   },
   { timestamps: true },
 )

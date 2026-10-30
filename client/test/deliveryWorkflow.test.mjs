@@ -48,7 +48,7 @@ test('self return requires a deliberate method, sends to the selected shop and l
   await user.click(screen.getByRole('button', { name: /Self return/ }))
   await user.click(await screen.findByRole('button', { name: 'Send code to shop' }))
   assert.equal(JSON.parse(calls.find((c) => c.path.endsWith('/send')).options.body).providerId, 'shop-1')
-  const input = await screen.findByRole('textbox', { name: 'Receipt code from Camera shop' })
+  const input = await screen.findByRole('textbox', { name: 'Receipt code from Camera shop, digit 1' })
   await user.type(input, '123456')
   await user.click(screen.getByRole('button', { name: 'Verify return receipt' }))
   await waitFor(() => assert.equal(closed, true))
@@ -81,26 +81,26 @@ test('customer explicitly assigns approved deliveries and sees accessible rider 
   const api = async (path, options = {}) => {
     calls.push({ path, options })
     if (path.endsWith('/assign')) { searching = true; return { message: 'Finding nearby riders.' } }
-    return { tasks: [task({ search: { state: searching ? 'searching' : 'waiting', radiusMeters: 2000 } })] }
+    return { tasks: [task({ paid: true, search: { state: searching ? 'searching' : 'waiting', radiusMeters: 2000 } })] }
   }
   const { container } = render(React.createElement(DeliveryTaskBoard, { api, role: 'user' }))
   const user = userEvent.setup({ document })
-  await user.click(await screen.findByRole('button', { name: 'Assign Delivery Partner' }))
+  await user.click(await screen.findByRole('button', { name: 'Assign delivery partner' }))
   assert.ok(await screen.findByText('Finding nearby riders'))
   assert.equal(calls.filter((c) => c.path.endsWith('/assign')).length, 1)
   const accessibility = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })
   assert.deepEqual(accessibility.violations.map((v) => v.id), [])
 })
 
-test('shop collection codes are entered by shop staff; assigned riders can request but cannot verify them', async () => {
+test('only the shop sender can send and verify shop collection codes; the rider sees its private notification', async () => {
   const challenge = { id: 'shop-challenge', kind: 'shop_pickup', maskedEmail: 'r***@example.test',
     expiresAt: new Date(Date.now() + 300000), resendAt: new Date(Date.now() + 60000) }
-  const api = async () => ({ tasks: [task({ status: 'assigned', canManage: true, canOperate: false, challenge })] })
+  const api = async () => ({ tasks: [task({ status: 'assigned', canManage: true, canOperate: false, canSendOtp: true, canVerifyOtp: true, challenge })] })
   const staff = render(React.createElement(DeliveryTaskBoard, { api, role: 'rental_shop' }))
-  assert.ok(await screen.findByRole('textbox', { name: 'Six-digit handover code' }))
+  assert.ok(await screen.findByRole('textbox', { name: 'Handover code, digit 1' }))
   staff.unmount()
-  const riderApi = async () => ({ tasks: [task({ status: 'assigned', canManage: false, canOperate: true, challenge })] })
+  const riderApi = async () => ({ tasks: [task({ status: 'assigned', canManage: false, canOperate: true, canSendOtp: false, canVerifyOtp: false, otpNotice: { body: 'Your private shop pickup code is 123456.' } })] })
   render(React.createElement(DeliveryTaskBoard, { api: riderApi, role: 'delivery_partner' }))
-  await screen.findByText(/r\*\*\*@example.test/)
-  assert.equal(screen.queryByRole('textbox', { name: 'Six-digit handover code' }), null)
+  await screen.findByText(/Your private shop pickup code/)
+  assert.equal(screen.queryByRole('textbox', { name: 'Handover code, digit 1' }), null)
 })

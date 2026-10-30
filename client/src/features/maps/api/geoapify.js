@@ -2,10 +2,10 @@ export const geoapifyBrowserKey = () => import.meta.env.VITE_GEOAPIFY_API_KEY?.t
 
 export async function geoapifySearch(endpoint, parameters, signal) {
   const key = geoapifyBrowserKey()
-  if (!key)
-    throw new Error(
-      'Address search needs VITE_GEOAPIFY_API_KEY in client/.env. Add your Geoapify browser key and restart the frontend.',
-    )
+  if (!key) {
+    console.warn('Address search is disabled: set VITE_GEOAPIFY_API_KEY in client/.env and restart.')
+    throw new Error('Address search is unavailable right now. Type your full address instead.')
+  }
   const url = new URL(`https://api.geoapify.com/v1/geocode/${endpoint}`)
   url.search = new URLSearchParams({
     ...parameters,

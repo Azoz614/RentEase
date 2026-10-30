@@ -1,0 +1,60 @@
+name: Database maintenance
+
+# Runs the server's MongoDB maintenance scripts against an environment's Atlas
+# cluster. Every task is a dry run unless "apply" is ticked.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose database to use
+        type: choice
+        options: [staging, production]
+        default: staging
+      task:
+        description: Maintenance task
+        type: choice
+        options: [inspect-db, migrate-handovers, migrate-identity]
+      apply:
+        description: Apply changes (otherwise dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-maintenance-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: ${{ inputs.task }} on ${{ inputs.environment }}${{ inputs.apply && ' (apply)' || ' (dry run)' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: server
+    env:
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      IDENTITY_ENCRYPTION_KEY: ${{ secrets.IDENTITY_ENCRYPTION_KEY }}
+      IDENTITY_HASH_KEY: ${{ secrets.IDENTITY_HASH_KEY }}
+      TASK: ${{ inputs.task }}
+      APPLY: ${{ inputs.apply }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Run ${{ inputs.task }}
+        run: |
+          args=()
+          [ "$APPLY" = "true" ] && args+=(--apply)
+          case "$TASK" in
+            inspect-db) npm run inspect-db ;;
+            migrate-handovers) npm run migrate:handovers -- "${args[@]}" ;;
+            migrate-identity) npm run migrate:identity -- "${args[@]}" ;;
+          esac

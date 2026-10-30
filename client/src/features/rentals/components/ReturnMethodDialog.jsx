@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Modal } from './Modal.jsx'
 import { LocationPicker } from '../../maps/components/LocationPicker.jsx'
 import { UiIcon } from '../../../components/ui/UiIcon.jsx'
+import { HandoverCodeInput } from './HandoverCodeInput.jsx'
 import { formatCurrencyFixed as money } from '../../../utils/currency.js'
 import '../../delivery-partner/styles/delivery-dispatch.css'
 import '../styles/rental-handover.css'
@@ -91,7 +92,7 @@ export default function ReturnMethodDialog({ rental, api, onClose, onUpdated }) 
                   event.preventDefault()
                   perform('/self-return/verify', { challengeId: h.challengeId, code: new FormData(event.currentTarget).get('code') }, update)
                 }}>
-                  <label>Shop receipt code<input name="code" aria-label={`Receipt code from ${h.name}`} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required placeholder="000000" disabled={busy} /></label>
+                  <label>Shop receipt code<HandoverCodeInput name="code" aria-label={`Receipt code from ${h.name}`} disabled={busy} /></label>
                   <button className="dispatch-primary" disabled={busy}>{busy ? 'Verifying…' : 'Verify return receipt'}</button>
                 </form>}
               </>}
@@ -105,9 +106,12 @@ export default function ReturnMethodDialog({ rental, api, onClose, onUpdated }) 
             {busy ? 'Calculating driving route…' : quote ? 'Refresh collection route' : 'Review collection route'}</button>
           {quote && <div className="dispatch-return-quote">
             {quote.shipments.map((s) => <div key={s.providerId}><span>{s.shopName}</span><b>{s.returnDistanceKm.toFixed(2)} km · {s.returnEtaMinutes} min</b></div>)}
-            <div><span>Return fee {quote.fee ? '(included in booking)' : '(waived)'}</span><b>{money(quote.fee)}</b></div>
-            <p>Nearby riders receive your request first. Both handovers require separate email codes.</p>
-            <button className="dispatch-primary" disabled={busy || quote.expiresAt <= now} onClick={() => perform('/return', { quoteToken: quote.quoteToken }, update)}>
+            {quote.fee > (quote.charge || 0) && <div><span>Collection fee (paid with your booking)</span><b>{money(quote.fee - (quote.charge || 0))}</b></div>}
+            {quote.charge > 0 && <div><span>Collection fee (deducted from your deposit)</span><b>{money(quote.charge)}</b></div>}
+            {quote.coveredByDeposit === false
+              ? <p role="alert" className="re-map-error">Your remaining deposit doesn’t cover this collection. Return the items to the shop yourself, or contact the shop.</p>
+              : <p>Nearby riders receive your request first. Both handovers require separate email codes.</p>}
+            <button className="dispatch-primary" disabled={busy || quote.expiresAt <= now || quote.coveredByDeposit === false} onClick={() => perform('/return', { quoteToken: quote.quoteToken }, update)}>
               {quote.expiresAt <= now ? 'Route expired · refresh above' : busy ? 'Requesting collection…' : 'Confirm & find a return rider'}</button>
           </div>}
         </section>}

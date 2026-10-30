@@ -1,0 +1,23 @@
+# Secrets for the local Workers runtime (`npm run dev:worker`). Copy to .dev.vars
+# (git-ignored). Without a .dev.vars file, wrangler dev reads server/.env instead.
+# Non-secret settings (SMTP_HOST, SMTP_PORT, ...) are "vars" in wrangler.jsonc.
+# Generate the random values with `npm run secrets:generate`.
+
+# Use a replica set (transactions) - local, or an Atlas development cluster.
+MONGO_URI=mongodb://127.0.0.1:27017/rentease?replicaSet=rs0
+SESSION_SECRET=
+OTP_SECRET=
+RENTAL_OTP_SECRET=
+IDENTITY_ENCRYPTION_KEY=
+IDENTITY_HASH_KEY=
+
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=RentEase <no-reply@example.com>
+ADMIN_EMAIL=
+GOOGLE_CLIENT_ID=
+
+GEOAPIFY_API_KEY=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=

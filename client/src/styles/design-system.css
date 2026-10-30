@@ -127,11 +127,10 @@ dialog[open] {
   .admin-kicker,
   .iv-kicker,
   .cr-eyebrow,
-  .handover-eyebrow,
-  .login-eyebrow
+  .handover-eyebrow
 ) {
   color: var(--re-primary);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
   letter-spacing: 0.13em;
   font-weight: 750;
@@ -154,7 +153,7 @@ dialog[open] {
 }
 :is(.admin-card-subtitle, .workspace-card-head p, .iv-heading p, .cr-heading p, .handover-intro p) {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 
@@ -167,7 +166,6 @@ dialog[open] {
   .owner-accept,
   .driver-next,
   .admin-primary,
-  .login-submit,
   .cr-primary,
   .handover-button.primary,
   .handover-verify-submit,
@@ -181,7 +179,7 @@ dialog[open] {
   background: var(--re-primary);
   color: #fff;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   box-shadow: 0 2px 3px #0c4c3210;
   transition:
@@ -199,7 +197,6 @@ dialog[open] {
     .owner-accept,
     .driver-next,
     .admin-primary,
-    .login-submit,
     .cr-primary,
     .handover-button.primary,
     .handover-verify-submit,
@@ -223,7 +220,7 @@ dialog[open] {
   background: var(--re-primary);
   color: #fff;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1.4;
   cursor: pointer;
@@ -233,15 +230,14 @@ dialog[open] {
   .admin-secondary,
   .iv-button.secondary,
   .handover-button.secondary,
-  .quote-button,
-  .register-back
+  .quote-button
 ) {
   min-height: 42px;
   border: 1px solid var(--re-line);
   border-radius: 10px;
   background: white;
   color: var(--re-ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 :is(
@@ -249,8 +245,7 @@ dialog[open] {
     .admin-secondary,
     .iv-button.secondary,
     .handover-button.secondary,
-    .quote-button,
-    .register-back
+    .quote-button
   ):hover:not(:disabled) {
   background: var(--re-soft);
   border-color: #b2d1c3;
@@ -301,7 +296,7 @@ dialog[open] {
   background: #fff;
   color: var(--re-ink);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
   transition:
     border-color 0.15s,
@@ -336,7 +331,7 @@ input[type='radio'] {
 }
 :is(.admin-form, .owner-listing-form, .re-map-panel, .re-location-picker, .iv-field-grid) label {
   color: #3d5548;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1.6;
 }
@@ -344,7 +339,7 @@ input[type='file'] {
   width: 100%;
   max-width: 100%;
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 input[type='file']::file-selector-button {
   margin-right: 12px;
@@ -428,7 +423,7 @@ input[type='file']::file-selector-button {
 .re-signout-card p {
   margin: 6px 0 0;
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .re-signout-card > .register-spinner {
   color: var(--re-primary);
@@ -454,7 +449,7 @@ input[type='file']::file-selector-button {
   background: transparent;
   color: var(--re-muted);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -497,7 +492,7 @@ input[type='file']::file-selector-button {
   border-radius: 10px;
   background: transparent;
   color: #496055;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 .guest-marketplace .market-logout {
@@ -520,11 +515,25 @@ input[type='file']::file-selector-button {
   color: var(--re-primary);
   font-weight: 750;
 }
+/* Name over role, like the admin sidebar profile. */
 .profile-trigger-name {
-  font-size: 12px;
-  max-width: 100px;
+  display: grid;
+  gap: 1px;
+  max-width: 140px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+}
+.profile-trigger-name b,
+.profile-trigger-name small {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-trigger-name small {
+  color: var(--re-muted);
+  font-size: 11px;
+  font-weight: 500;
 }
 .profile-dropdown {
   width: 300px;
@@ -571,7 +580,7 @@ input[type='file']::file-selector-button {
   align-items: center;
   gap: 8px;
   color: #486c54;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.12em;
 }
 .re-live-dot {
@@ -610,7 +619,7 @@ input[type='file']::file-selector-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 550;
 }
 .re-hero-art {
@@ -638,7 +647,7 @@ input[type='file']::file-selector-button {
 }
 .search-panel label > span {
   color: #52695c;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.015em;
 }
 .search-panel input,
@@ -688,14 +697,14 @@ input[type='file']::file-selector-button {
 .re-disclosure > summary b {
   display: block;
   color: var(--re-ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 .re-disclosure > summary small {
   display: block;
   margin-top: 4px;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .re-disclosure-icon {
   display: grid;
@@ -748,7 +757,7 @@ input[type='file']::file-selector-button {
 }
 .re-listing-title p {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   margin: 0;
 }
@@ -817,7 +826,7 @@ input[type='file']::file-selector-button {
   background: #fffffff2;
   color: #256548;
   border: 1px solid #ffffffa0;
-  font-size: 10px;
+  font-size: 12px;
   box-shadow: 0 2px 8px #183b2b0c;
 }
 .availability.unavailable {
@@ -842,7 +851,7 @@ input[type='file']::file-selector-button {
 }
 .listing-meta {
   color: #76887b;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .listing-meta span:first-child {
@@ -867,13 +876,13 @@ input[type='file']::file-selector-button {
 .listing-info > p {
   min-height: 37px;
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
 }
 .listing-specs {
   color: #75857a;
   line-height: 1.6;
-  font-size: 10px;
+  font-size: 12px;
   margin: 8px 0 0;
 }
 .listing-bottom {
@@ -894,10 +903,10 @@ input[type='file']::file-selector-button {
 }
 .listing-bottom small {
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .listing-bottom .lead-time {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
   margin-top: 5px;
 }
@@ -908,7 +917,7 @@ input[type='file']::file-selector-button {
   background: var(--re-soft);
   border: 1px solid #d4e4d8;
   color: var(--re-primary);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 650;
 }
 .listing-bottom > button:hover:not(:disabled) {
@@ -968,7 +977,7 @@ input[type='file']::file-selector-button {
 .business-brand small,
 .admin-brand small {
   color: var(--re-muted);
-  font-size: 8px;
+  font-size: 10.5px;
   letter-spacing: 0.13em;
 }
 .business-shop-card {
@@ -979,10 +988,10 @@ input[type='file']::file-selector-button {
   border-radius: 13px;
 }
 .business-shop-card b {
-  font-size: 12px;
+  font-size: 13px;
 }
 .business-shop-card small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--re-muted);
 }
 .business-avatar {
@@ -992,13 +1001,13 @@ input[type='file']::file-selector-button {
 }
 .business-shop-card > i {
   color: #33704c;
-  font-size: 8px;
+  font-size: 10.5px;
   background: #e6f2e4;
 }
 .admin-side-label {
   padding: 0 13px;
   color: #93a08e;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.13em;
   margin: 0 0 12px;
 }
@@ -1027,7 +1036,7 @@ input[type='file']::file-selector-button {
   text-align: left;
   color: #65776b;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
   line-height: 1.5;
   cursor: pointer;
@@ -1042,7 +1051,7 @@ input[type='file']::file-selector-button {
 .re-workspace-nav.business-menu > button > span {
   width: auto;
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
 }
 .re-workspace-nav > button > svg {
   width: 19px;
@@ -1081,7 +1090,7 @@ input[type='file']::file-selector-button {
   padding: 2px 6px;
   background: #dcecdf;
   color: #2a684d;
-  font-size: 10px;
+  font-size: 12px;
 }
 .re-mobile-workspace-nav {
   display: none;
@@ -1094,7 +1103,7 @@ input[type='file']::file-selector-button {
   flex-shrink: 0;
 }
 .business-sidebar-foot > div {
-  font-size: 10px;
+  font-size: 12px;
   color: #839287;
 }
 .business-sidebar-foot > button {
@@ -1106,15 +1115,15 @@ input[type='file']::file-selector-button {
   padding: 10px 13px;
   border-color: var(--re-line);
   border-radius: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: #66796b;
 }
 .admin-side-footer b {
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-side-footer small {
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .admin-side-footer button {
   width: 34px;
@@ -1154,13 +1163,24 @@ input[type='file']::file-selector-button {
 }
 .business-topbar small {
   color: #8b9b8d;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.1em;
 }
 .admin-topbar {
   padding: 20px clamp(22px, 3vw, 44px);
   color: #73866d;
-  font-size: 12px;
+  font-size: 13px;
+}
+/* Refresh, notifications and the profile menu stay in view while the admin and shop owner
+   pages scroll. At 760px and below the sidebar becomes the sticky bar instead. */
+@media (min-width: 761px) {
+  .admin-topbar,
+  .owner-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--re-background);
+  }
 }
 .admin-location,
 .business-location {
@@ -1171,7 +1191,7 @@ input[type='file']::file-selector-button {
   color: var(--re-muted);
   border-color: var(--re-line);
   border-radius: 9px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .business-top-actions > button,
 .admin-refresh {
@@ -1184,7 +1204,7 @@ input[type='file']::file-selector-button {
   border-radius: 10px;
   background: white;
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .admin-content {
   padding: 28px clamp(22px, 3vw, 44px) 45px;
@@ -1200,7 +1220,7 @@ input[type='file']::file-selector-button {
 }
 .admin-page-heading p {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 .business-welcome,
@@ -1221,7 +1241,7 @@ input[type='file']::file-selector-button {
 .business-welcome p,
 .driver-welcome p {
   color: #64765c;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
 }
 .business-welcome .workspace-kicker,
@@ -1238,18 +1258,18 @@ input[type='file']::file-selector-button {
 }
 .admin-product-info b {
   color: var(--re-ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 .admin-product-info > span,
 .admin-product-info > small {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.6;
 }
 .admin-product-row > .admin-row-action {
   flex-shrink: 0;
   min-height: 38px;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .admin-item-type-picker > button {
   border-color: var(--re-line);
@@ -1274,7 +1294,7 @@ input[type='file']::file-selector-button {
   box-shadow: none;
 }
 .driver-map-mark small {
-  font-size: 8px;
+  font-size: 10.5px;
   letter-spacing: 0.08em;
 }
 .business-stat-grid,
@@ -1294,7 +1314,7 @@ input[type='file']::file-selector-button {
 .business-stat-grid > article > small,
 .admin-stat > div > small {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .business-stat-grid > article > b,
 .admin-stat > div > strong {
@@ -1307,7 +1327,7 @@ input[type='file']::file-selector-button {
 .business-stat-grid > article > em,
 .admin-stat > div > span {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   font-style: normal;
   line-height: 1.6;
 }
@@ -1366,14 +1386,14 @@ input[type='file']::file-selector-button {
 .owner-booking-copy h3,
 .admin-product-info h3,
 .admin-shop-info h3 {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--re-ink);
 }
 .owner-booking-copy p,
 .admin-product-info p,
 .admin-shop-info p {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.65;
 }
 .owner-booking-date {
@@ -1396,7 +1416,7 @@ input[type='file']::file-selector-button {
 .iv-badge {
   border-radius: 7px;
   padding: 5px 9px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0;
   text-transform: capitalize;
@@ -1436,12 +1456,12 @@ input[type='file']::file-selector-button {
   letter-spacing: -0.3px;
 }
 .owner-inventory-info p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-muted);
 }
 .owner-inventory-info > button {
   min-height: 40px;
-  font-size: 11px;
+  font-size: 12.5px;
   border-radius: 9px;
 }
 .owner-form-card {
@@ -1508,7 +1528,7 @@ input[type='file']::file-selector-button {
   border-radius: 10px;
   background: #f2f5ee;
   color: #5f7867;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
 }
 .workspace-roadmap {
@@ -1526,17 +1546,17 @@ input[type='file']::file-selector-button {
 }
 .driver-request-head h3 small {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .driver-job-code {
-  font-size: 9px;
+  font-size: 11px;
   color: #93a08e;
   letter-spacing: 0.1em;
 }
 .driver-delivery-type {
   background: var(--re-soft);
   color: var(--re-primary);
-  font-size: 10px;
+  font-size: 12px;
   border-radius: 7px;
   padding: 7px 10px;
 }
@@ -1551,12 +1571,12 @@ input[type='file']::file-selector-button {
   color: var(--re-primary);
 }
 .driver-address b {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 .driver-route-meta {
   color: #798e6d;
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.7;
   gap: 14px;
 }
@@ -1572,7 +1592,7 @@ input[type='file']::file-selector-button {
   padding: 10px 15px;
 }
 .driver-item-info b {
-  font-size: 12px;
+  font-size: 13px;
 }
 .driver-notification {
   padding: 18px 0;
@@ -1609,7 +1629,7 @@ input[type='file']::file-selector-button {
 .cr-filters > button {
   border-radius: 8px;
   min-height: 36px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .cr-filters > button[aria-pressed='true'] {
   background: var(--re-primary);
@@ -1709,7 +1729,7 @@ input[type='file']::file-selector-button {
   font-size: 19px;
 }
 .cr-next-step p {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--re-muted);
 }
@@ -1784,11 +1804,11 @@ input[type='file']::file-selector-button {
   color: var(--re-ink);
   background: white;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
 }
 .iv-toolbar > label {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .iv-stepper button.active b {
   background: #ffffff26;
@@ -1806,7 +1826,7 @@ input[type='file']::file-selector-button {
   letter-spacing: -0.3px;
 }
 .iv-status-card p {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   color: var(--re-muted);
 }
@@ -1833,7 +1853,7 @@ input[type='file']::file-selector-button {
 .iv-stepper button {
   min-height: 44px;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .iv-stepper button.active {
   background: var(--re-primary);
@@ -1870,7 +1890,7 @@ input[type='file']::file-selector-button {
 .re-map-panel p,
 .re-location-picker small {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .re-map-panel h2 {
   font-size: 21px;
@@ -1890,7 +1910,7 @@ input[type='file']::file-selector-button {
   border-color: var(--re-line);
   color: var(--re-primary);
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .re-map-panel .re-map-primary,
 .re-location-picker .re-map-primary {
@@ -1919,7 +1939,7 @@ input[type='file']::file-selector-button {
   border-radius: 9px;
   background: #edf2e8;
   color: var(--re-primary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 .re-suggestions {
@@ -1940,7 +1960,7 @@ input[type='file']::file-selector-button {
 }
 .re-product-location summary {
   color: var(--re-primary);
-  font-size: 12px;
+  font-size: 13px;
 }
 :is(.admin-table-wrap, .iv-table-wrap, .handover-table-wrap) {
   overflow-x: auto;
@@ -1958,7 +1978,7 @@ input[type='file']::file-selector-button {
   border-bottom: 1px solid var(--re-line);
   background: #f4f8f3;
   color: #85917d;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -1970,7 +1990,7 @@ input[type='file']::file-selector-button {
 :is(.admin-table, .iv-table, .handover-table) td {
   padding: 17px;
   border-bottom: 1px solid #edf2e8;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 :is(.admin-table, .iv-table, .handover-table) tbody tr:hover {
@@ -1978,7 +1998,7 @@ input[type='file']::file-selector-button {
 }
 :is(.admin-table, .iv-table, .handover-table) td small {
   color: var(--re-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .handover-list {
   border-color: var(--re-line);
@@ -2000,7 +2020,7 @@ input[type='file']::file-selector-button {
 .handover-button {
   min-height: 38px;
   border-radius: 9px;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 .handover-order-link,
 .handover-detail-button {
@@ -2041,7 +2061,7 @@ input[type='file']::file-selector-button {
 }
 .account-settings-heading p {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .account-type-pill {
   background: white;
@@ -2061,7 +2081,7 @@ input[type='file']::file-selector-button {
   padding: 10px 13px;
   border-radius: 9px;
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .account-settings-tabs button:hover,
 .account-settings-tabs button.active {
@@ -2095,13 +2115,13 @@ input[type='file']::file-selector-button {
 }
 .settings-section-heading p {
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .account-settings-dialog .settings-fields > label,
 .account-settings-dialog .settings-section > label,
 .account-settings-dialog .password-settings-form > label {
   color: #4e6346;
-  font-size: 12px;
+  font-size: 13px;
   gap: 9px;
 }
 .account-settings-dialog .settings-fields input,
@@ -2116,7 +2136,7 @@ input[type='file']::file-selector-button {
   border-radius: 9px;
   color: var(--re-ink);
   background: white;
-  font-size: 13px;
+  font-size: 14px;
 }
 .account-settings-dialog input[readonly] {
   border-color: #e7ede7;
@@ -2133,7 +2153,7 @@ input[type='file']::file-selector-button {
   border-color: var(--re-line);
   background: white;
   color: var(--re-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .account-settings-dialog .settings-methods label:has(input:checked) {
   border-color: #9dc3ae;
@@ -2150,7 +2170,7 @@ input[type='file']::file-selector-button {
   border-color: #d1e0d5;
   background: var(--re-soft);
   color: var(--re-primary);
-  font-size: 12px;
+  font-size: 13px;
 }
 .account-settings-dialog .settings-secondary-button:hover,
 .settings-edit-button:hover {
@@ -2180,7 +2200,7 @@ input[type='file']::file-selector-button {
 .profile-edit-actions > span,
 .settings-fields small {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.7;
 }
 .profile-dropdown-info > div b {
@@ -2202,7 +2222,7 @@ input[type='file']::file-selector-button {
   font-size: 17px;
 }
 .iv-notification > p {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--re-muted);
   line-height: 1.8;
 }
@@ -2217,8 +2237,7 @@ input[type='file']::file-selector-button {
   .handover-modal,
   .admin-modal,
   .checkout-dialog,
-  .profile-dialog,
-  .product-detail-dialog
+  .profile-dialog
 ) {
   color: var(--re-ink);
   border: 1px solid var(--re-line);
@@ -2266,11 +2285,11 @@ input[type='file']::file-selector-button {
 .checkout-items > div {
   padding: 10px 0;
   gap: 15px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .checkout-total {
   padding: 14px 0;
-  font-size: 13px;
+  font-size: 14px;
   border-color: var(--re-line);
 }
 .checkout-total b {
@@ -2283,7 +2302,7 @@ input[type='file']::file-selector-button {
 .checkout-period,
 .checkout-address,
 .fee-note {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--re-muted);
   line-height: 1.75;
 }
@@ -2308,7 +2327,7 @@ input[type='file']::file-selector-button {
   background: var(--re-primary);
   color: white;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 .coupon-entry button:disabled {
@@ -2335,11 +2354,11 @@ input[type='file']::file-selector-button {
   box-shadow: 0 0 0 1px #8fb99c;
 }
 .delivery-options b {
-  font-size: 13px;
+  font-size: 14px;
 }
 .delivery-options small {
   color: var(--re-muted);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.5;
 }
 .checkout-submit {
@@ -2349,19 +2368,6 @@ input[type='file']::file-selector-button {
 }
 .product-detail-copy {
   padding: 35px;
-}
-.product-detail-dialog > .dialog-close {
-  position: sticky;
-  top: 14px;
-  float: none;
-  width: 100%;
-  height: 0;
-  margin: 0;
-}
-.product-detail-dialog > .dialog-close > button {
-  position: absolute;
-  top: 0;
-  right: 14px;
 }
 .product-detail-layout {
   width: 100%;
@@ -2373,7 +2379,7 @@ input[type='file']::file-selector-button {
 }
 .product-detail-description {
   color: var(--re-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 .product-detail-price {
@@ -2397,11 +2403,11 @@ input[type='file']::file-selector-button {
 }
 .product-detail-facts small {
   color: #91a084;
-  font-size: 10px;
+  font-size: 12px;
 }
 .product-detail-facts b {
   color: #38513d;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .product-detail-specs,
@@ -2437,15 +2443,14 @@ input[type='file']::file-selector-button {
   .admin-alert,
   .iv-alert,
   .cr-notice,
-  .handover-feedback,
-  .login-feedback
+  .handover-feedback
 ) {
   padding: 14px 17px;
   border: 1px solid #d4e6ca;
   border-radius: 11px;
   background: #f1f8eb;
   color: #447343;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   animation: re-content-in 0.2s ease-out;
 }
@@ -2456,7 +2461,6 @@ input[type='file']::file-selector-button {
   .iv-alert.error,
   .cr-error,
   .handover-feedback.error,
-  .login-feedback.is-error,
   .re-map-error
 ) {
   border: 1px solid #edcfca;
@@ -2470,7 +2474,7 @@ input[type='file']::file-selector-button {
   border-radius: 14px;
   background: #fbfcf8;
   color: #7d8e74;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 :is(.listing-skeleton, .cr-skeleton, .handover-skeleton, .iv-skeleton) {
@@ -2484,203 +2488,11 @@ input[type='file']::file-selector-button {
   background-size: 200% 100%;
 }
 
-/* Account access */
-.login-page {
-  height: auto;
-  min-height: 100dvh;
-  padding: 0 clamp(20px, 5vw, 80px) 25px;
-  overflow: visible;
-}
-.login-nav {
-  min-height: 83px;
-  border-color: var(--re-line);
-}
-.login-nav-signup {
-  color: var(--re-muted);
-  font-size: 12px;
-}
-.login-nav-signup a {
-  color: var(--re-primary);
-}
-.login-layout,
-.login-layout.is-registering {
-  width: min(1180px, 100%);
-  height: auto;
-  min-height: 670px;
-  margin: 30px auto;
-  border: 1px solid var(--re-line);
-  border-radius: 23px;
-  overflow: hidden;
-  box-shadow: var(--re-shadow-raised);
-  grid-template-columns: 1fr 1fr;
-}
-.login-story,
-.login-layout.is-registering .login-story {
-  position: relative;
-  order: 0;
-  min-height: 610px;
-  padding: 43px;
-  overflow: hidden;
-  background: #eaf2e6;
-  color: var(--re-ink);
-  isolation: isolate;
-  animation: none;
-}
-.login-story::before {
-  display: none;
-}
-.login-story-copy {
-  position: relative;
-  z-index: 1;
-}
-.login-story-kicker {
-  color: #608556;
-  font-size: 10px;
-  letter-spacing: 0.13em;
-}
-.login-story h1 {
-  font-size: clamp(36px, 3.5vw, 48px);
-  font-weight: 700;
-  letter-spacing: -1.9px;
-  line-height: 1.15;
-  color: var(--re-ink);
-}
-.login-story h1 em {
-  display: inline;
-  color: var(--re-primary);
-  font-style: normal;
-}
-.login-story-copy > p {
-  max-width: 360px;
-  color: #6b805f;
-  font-size: 13px;
-  line-height: 1.8;
-}
-.login-story .re-hero-art {
-  width: 100%;
-  max-width: 320px;
-  margin: 15px auto -10px;
-}
-.login-story-caption {
-  color: #849778;
-  border-color: #d0dfc4;
-  font-size: 9px;
-}
-.login-panel {
-  background: #fff;
-  padding: 45px clamp(24px, 4vw, 62px);
-  border: 0;
-}
-.login-form-content {
-  max-width: 380px;
-}
-.login-heading h2 {
-  font-size: 34px;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -1.2px;
-  margin: 14px 0 12px;
-}
-.login-heading h2 em {
-  color: var(--re-primary);
-  font-style: normal;
-}
-.login-heading > p {
-  color: var(--re-muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-.login-social-row {
-  display: none;
-}
-.login-divider {
-  margin: 22px 0;
-  color: #899780;
-  font-size: 10px;
-}
-.login-form > label,
-.login-password-label > label {
-  color: #4e6346;
-  font-size: 12px;
-  font-weight: 650;
-}
-.login-input-wrap {
-  min-height: 48px;
-  border: 1px solid var(--re-line);
-  border-radius: 10px;
-  background: #fff;
-  padding: 0 13px;
-  gap: 10px;
-}
-.login-input-wrap > svg {
-  flex-shrink: 0;
-  color: #91a084;
-}
-.login-input-wrap:focus-within {
-  border-color: #8eb29d;
-  box-shadow: 0 0 0 3px #14756512;
-}
-.login-input-wrap input {
-  min-height: 46px;
-  color: var(--re-ink);
-  font-size: 13px;
-}
-.login-password-label a,
-.login-password-toggle {
-  color: var(--re-primary);
-  font-size: 11px;
-}
-.login-submit {
-  min-height: 48px;
-  border-radius: 10px;
-  margin-top: 9px;
-}
-.login-switch-copy {
-  margin-top: 22px;
-  color: var(--re-muted);
-  font-size: 12px;
-}
-.login-switch-copy a {
-  color: var(--re-primary);
-}
-.login-terms {
-  color: #98a28e;
-  font-size: 10px;
-  line-height: 1.8;
-}
-.register-summary {
-  background: #f2f7ed;
-  border-color: var(--re-line);
-  border-radius: 11px;
-}
-.re-registration-progress {
-  display: flex;
-  gap: 5px;
-  margin: 22px 0;
-}
-.re-registration-progress > span {
-  height: 4px;
-  flex: 1;
-  background: #e8eee3;
-  border-radius: 5px;
-}
-.re-registration-progress > span.is-complete {
-  background: var(--re-primary);
-}
-.re-auth-assurance {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0 0 22px;
-  color: #798e6d;
-  font-size: 11px;
-}
 :is(
   .business-topbar small,
   .admin-side-label,
   .driver-job-code,
   .listing-meta,
-  .login-terms,
   .cr-overview small,
   .product-detail-facts small,
   .product-detail-rating span,
@@ -2802,7 +2614,7 @@ input[type='file']::file-selector-button {
     flex-basis: 40%;
   }
   .re-hero-benefits span {
-    font-size: 9px;
+    font-size: 11px;
   }
   .business-topbar h1 {
     font-size: 21px;
@@ -2825,13 +2637,6 @@ input[type='file']::file-selector-button {
   }
   .cr-card-layout {
     grid-template-columns: 1fr;
-  }
-  .login-story,
-  .login-layout.is-registering .login-story {
-    padding: 30px;
-  }
-  .login-story h1 {
-    font-size: 36px;
   }
 }
 @media (max-width: 760px) {
@@ -2892,7 +2697,7 @@ input[type='file']::file-selector-button {
     border-radius: 10px;
     background: white;
     color: #4c6d53;
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 650;
     list-style: none;
     cursor: pointer;
@@ -2940,7 +2745,7 @@ input[type='file']::file-selector-button {
   .re-mobile-workspace-nav nav > button {
     min-height: 46px;
     padding: 9px 11px;
-    font-size: 11px;
+    font-size: 12.5px;
   }
   .re-mobile-workspace-nav nav > button > svg {
     width: 18px;
@@ -3037,42 +2842,6 @@ input[type='file']::file-selector-button {
   .owner-inventory-info {
     padding: 14px;
   }
-  .login-layout,
-  .login-layout.is-registering {
-    max-width: 560px;
-    grid-template-columns: 1fr;
-    min-height: 0;
-  }
-  .login-story,
-  .login-layout.is-registering .login-story {
-    min-height: 235px;
-    padding: 27px 29px;
-  }
-  .login-story .re-hero-art {
-    position: absolute;
-    right: -25px;
-    bottom: -20px;
-    width: 45%;
-    opacity: 0.55;
-    z-index: -1;
-  }
-  .login-story h1 {
-    max-width: 340px;
-    font-size: 35px;
-  }
-  .login-story-copy > p {
-    max-width: 350px;
-    font-size: 12px;
-  }
-  .login-story-caption {
-    display: none;
-  }
-  .login-panel {
-    padding: 30px;
-  }
-  .login-heading h2 {
-    font-size: 30px;
-  }
   .iv-status-card {
     flex-wrap: wrap;
   }
@@ -3108,7 +2877,7 @@ input[type='file']::file-selector-button {
     justify-content: center;
     min-width: 0;
     padding: 9px;
-    font-size: 11px;
+    font-size: 12.5px;
   }
   .account-settings-dialog .settings-section {
     padding: 17px;
@@ -3161,7 +2930,7 @@ input[type='file']::file-selector-button {
     height: 38px;
     flex: 1;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12.5px;
     padding: 0 8px;
   }
   .market-nav .market-primary-nav > button {
@@ -3187,7 +2956,7 @@ input[type='file']::file-selector-button {
   .market-actions .market-logout {
     min-height: 36px;
     padding: 0 9px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .profile-trigger {
     min-height: 36px;
@@ -3226,7 +2995,7 @@ input[type='file']::file-selector-button {
     display: block;
   }
   .re-rental-hero .market-kicker {
-    font-size: 8px;
+    font-size: 10.5px;
     letter-spacing: 0.08em;
     line-height: 1.7;
   }
@@ -3237,7 +3006,7 @@ input[type='file']::file-selector-button {
   }
   .re-rental-hero p {
     max-width: 88%;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.8;
   }
   .re-rental-hero > .re-hero-art {
@@ -3248,7 +3017,7 @@ input[type='file']::file-selector-button {
     gap: 12px;
   }
   .re-hero-benefits span {
-    font-size: 9px;
+    font-size: 11px;
   }
   .re-hero-benefits svg {
     width: 14px;
@@ -3256,7 +3025,7 @@ input[type='file']::file-selector-button {
   }
   .re-hero-button {
     min-height: 43px;
-    font-size: 11px;
+    font-size: 12.5px;
     padding: 0 17px;
   }
   .search-panel {
@@ -3324,7 +3093,7 @@ input[type='file']::file-selector-button {
   }
   .listing-info > p {
     display: -webkit-box;
-    font-size: 12px;
+    font-size: 13px;
   }
   .listing-info h3 {
     font-size: 19px;
@@ -3349,15 +3118,15 @@ input[type='file']::file-selector-button {
     min-width: 0;
   }
   .cart-summary b {
-    font-size: 11px;
+    font-size: 12.5px;
   }
   .cart-summary small {
-    font-size: 9px;
+    font-size: 11px;
   }
   .cart-link {
     padding: 10px 12px;
     min-height: 42px;
-    font-size: 10px;
+    font-size: 12px;
     white-space: nowrap;
   }
   .market-footer {
@@ -3382,7 +3151,7 @@ input[type='file']::file-selector-button {
     font-size: 23px;
   }
   .business-topbar small {
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .business-welcome,
   .driver-welcome {
@@ -3415,7 +3184,7 @@ input[type='file']::file-selector-button {
     font-size: 25px;
   }
   .business-stat-grid > article > em {
-    font-size: 9px;
+    font-size: 11px;
     margin-top: auto;
   }
   .business-stat-icon {
@@ -3476,7 +3245,7 @@ input[type='file']::file-selector-button {
   .driver-next {
     width: 100%;
     min-height: 47px;
-    font-size: 12px;
+    font-size: 13px;
   }
   .driver-request-head {
     flex-wrap: wrap;
@@ -3559,7 +3328,7 @@ input[type='file']::file-selector-button {
   }
   .cr-filters > button {
     flex: 1 1 40%;
-    font-size: 11px;
+    font-size: 12.5px;
     min-height: 37px;
   }
   .cr-card-main {
@@ -3585,11 +3354,11 @@ input[type='file']::file-selector-button {
     gap: 12px;
   }
   .cr-dates b {
-    font-size: 11px;
+    font-size: 12.5px;
   }
   .cr-progress b,
   .cr-progress small {
-    font-size: 9px;
+    font-size: 11px;
   }
   .cr-progress li {
     padding-left: 3px;
@@ -3659,43 +3428,6 @@ input[type='file']::file-selector-button {
     height: 49px;
     font-size: 21px;
   }
-  .login-page {
-    padding: 0 15px 20px;
-  }
-  .login-nav {
-    min-height: 72px;
-  }
-  .login-nav-signup {
-    gap: 10px;
-    font-size: 10px;
-  }
-  .login-nav-signup > span {
-    display: none;
-  }
-  .login-layout,
-  .login-layout.is-registering {
-    margin: 18px auto;
-    border-radius: 18px;
-  }
-  .login-story,
-  .login-layout.is-registering .login-story {
-    padding: 25px;
-    min-height: 215px;
-  }
-  .login-story h1 {
-    font-size: 30px;
-    max-width: 300px;
-  }
-  .login-story .re-hero-art {
-    display: none;
-  }
-  .login-panel {
-    padding: 28px 23px;
-  }
-  .login-input-wrap,
-  .login-submit {
-    min-height: 48px;
-  }
 }
 @media (max-width: 360px) {
   .business-sidebar,
@@ -3722,7 +3454,7 @@ input[type='file']::file-selector-button {
   }
   .market-actions .market-logout {
     padding: 0 6px;
-    font-size: 9px;
+    font-size: 11px;
   }
   .market-actions {
     gap: 0;
@@ -3740,7 +3472,7 @@ input[type='file']::file-selector-button {
     gap: 10px;
   }
   .re-hero-benefits span {
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .re-mobile-workspace-nav > summary > span {
     max-width: 85px;
@@ -3766,5 +3498,503 @@ input[type='file']::file-selector-button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Signed-in catalog heading: compact so search and listings stay above the fold. */
+.re-rental-heading {
+  margin: 28px 0 18px;
+}
+.re-rental-heading h1 {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.re-rental-heading p {
+  margin: 6px 0 0;
+  color: var(--re-muted);
+  font-size: 15px;
+}
+
+/* Catalog: search field with icon, one-tap category chips, calmer listing cards. */
+.search-panel label > span:first-child {
+  color: var(--re-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.search-panel label > .search-input {
+  position: relative;
+  display: block;
+  color: var(--re-ink);
+  font-size: 14px;
+  font-weight: 400;
+}
+.search-input > svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--re-muted);
+  pointer-events: none;
+}
+/* Matches the specificity of the shared field rule so the icon gets room. */
+.search-panel .search-input input:not([type='checkbox']):not([type='radio']):not([type='file']) {
+  padding-left: 40px;
+}
+.category-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 2px 2px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.category-chips::-webkit-scrollbar {
+  display: none;
+}
+.category-chips > button {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--re-line);
+  border-radius: 999px;
+  background: white;
+  color: var(--re-ink);
+  font-size: 13.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.category-chips > button:hover {
+  border-color: #b9d3c3;
+  background: var(--re-soft);
+}
+.category-chips > button[aria-pressed='true'] {
+  border-color: var(--re-primary);
+  background: var(--re-primary);
+  color: white;
+}
+.category-chips + .re-disclosure {
+  margin-bottom: 22px;
+}
+.market-section-heading {
+  margin-bottom: 14px;
+}
+.listing-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.listing-meta span:first-child {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.listing-meta span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 0;
+}
+.listing-meta span:last-child > svg {
+  flex-shrink: 0;
+}
+.listing-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+}
+.listing-price b {
+  font-size: 20px;
+}
+.listing-price small {
+  font-size: 13px;
+}
+.listing-bottom > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.listing-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--re-muted);
+  font-size: 12.5px;
+}
+.listing-terms li + li::before {
+  content: '·';
+  margin-right: 12px;
+  color: #b6c4b9;
+}
+.market-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+.market-empty b {
+  color: var(--re-ink);
+  font-size: 16px;
+}
+.market-empty button {
+  margin-top: 10px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--re-line);
+  border-radius: 10px;
+  background: white;
+  color: var(--re-primary);
+  font-weight: 650;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .search-panel > label:nth-child(4) {
+    grid-column: auto;
+  }
+}
+
+/* Ratings: card badge, customer review form and the owner's reviews page. */
+.listing-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -2px 0 8px;
+  color: var(--re-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.listing-rating i {
+  color: #e0a526;
+  font-style: normal;
+}
+.listing-rating small {
+  color: var(--re-muted);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.listing-rating.is-new {
+  color: var(--re-muted);
+  font-weight: 500;
+}
+.rv-stars {
+  display: inline-flex;
+  gap: 1px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.rv-stars i {
+  color: #d5ddd6;
+  font-style: normal;
+}
+.rv-stars i.is-on {
+  color: #e0a526;
+}
+.rv-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.rv-section {
+  border-color: #f1dfb4;
+  background: #fffcf3;
+}
+.rv-section > h3 {
+  margin: 0;
+}
+.rv-intro {
+  margin: 4px 0 14px;
+  color: var(--re-muted);
+  font-size: 14px;
+}
+.rv-item {
+  padding: 16px;
+  border: 1px solid var(--re-line);
+  border-radius: 14px;
+  background: white;
+}
+.rv-item + .rv-item {
+  margin-top: 10px;
+}
+.rv-item-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.rv-item-head img,
+.rv-item-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--re-soft);
+}
+.rv-star-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.rv-star-input legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.rv-star-input label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: #d5ddd6;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s, color 0.12s;
+}
+.rv-star-input label.is-on {
+  color: #e0a526;
+}
+.rv-star-input label:hover {
+  transform: scale(1.12);
+}
+.rv-star-input input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.rv-star-input label:has(input:focus-visible) {
+  outline: 3px solid #72a990;
+  outline-offset: 1px;
+  border-radius: 8px;
+}
+.rv-star-label {
+  margin-left: 10px;
+  white-space: nowrap;
+  color: var(--re-muted);
+  font-size: 14px;
+}
+.rv-comment {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.rv-comment textarea {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--re-line);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  resize: vertical;
+}
+.rv-error {
+  margin: 0 0 10px;
+  color: #a7343b;
+  font-size: 13px;
+}
+.rv-saved p {
+  margin: 8px 0 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.rv-saved small {
+  color: var(--re-muted);
+  font-size: 12.5px;
+}
+.sr-reviews {
+  display: grid;
+  gap: 12px;
+}
+.sr-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--re-line);
+  border-radius: 16px;
+  background: white;
+}
+.sr-summary > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.sr-summary > div > b {
+  font-size: 34px;
+  letter-spacing: -1px;
+}
+.sr-summary > div > span:last-child {
+  color: var(--re-muted);
+  font-size: 14px;
+}
+.sr-summary nav {
+  display: flex;
+  padding: 4px;
+  border-radius: 11px;
+  background: #f2f6f3;
+}
+.sr-summary nav button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--re-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sr-summary nav button[aria-pressed='true'] {
+  background: white;
+  color: var(--re-primary);
+  font-weight: 700;
+  box-shadow: 0 2px 7px #192f2a10;
+}
+.sr-product {
+  overflow: hidden;
+  border: 1px solid var(--re-line);
+  border-radius: 16px;
+  background: white;
+}
+.sr-product-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  background: none;
+  color: var(--re-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-product-head:hover {
+  background: #f8fbf6;
+}
+.sr-product-head img,
+.sr-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--re-soft);
+  flex-shrink: 0;
+}
+.sr-product-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.sr-product-title b {
+  font-size: 15px;
+}
+.sr-product-title small,
+.sr-none {
+  color: var(--re-muted);
+  font-size: 13px;
+}
+.sr-product-score {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+.sr-product-score small {
+  color: var(--re-muted);
+  font-size: 12.5px;
+}
+.sr-product-head > svg {
+  color: var(--re-muted);
+  transition: transform 0.18s;
+}
+.sr-product.is-open .sr-product-head > svg {
+  transform: rotate(180deg);
+}
+.sr-list {
+  display: grid;
+  gap: 0;
+  padding: 0 18px 8px;
+  border-top: 1px solid var(--re-line);
+}
+.sr-review {
+  padding: 14px 0;
+}
+.sr-review + .sr-review {
+  border-top: 1px solid #edf2e8;
+}
+.sr-review > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sr-review time {
+  margin-left: auto;
+  color: var(--re-muted);
+  font-size: 12.5px;
+}
+.sr-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--re-soft);
+  color: var(--re-primary);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.sr-review p {
+  margin: 8px 0 0 36px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.sr-review em {
+  color: var(--re-muted);
+}
+@media (max-width: 600px) {
+  .sr-product-head {
+    flex-wrap: wrap;
+  }
+  .sr-product-score {
+    justify-items: start;
+    width: 100%;
+    padding-left: 66px;
+  }
+  .sr-product-head > svg {
+    display: none;
+  }
+  .sr-review p {
+    margin-left: 0;
   }
 }

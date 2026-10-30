@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export function ProductRow({ product, onEdit, onToggle }) {
+export function ProductRow({ product, busy, onEdit, onToggle, onDelete }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const showDetails = () => setDetailsOpen(true)
   return (
@@ -11,6 +11,8 @@ export function ProductRow({ product, onEdit, onToggle }) {
         tabIndex={0}
         onClick={showDetails}
         onKeyDown={(event) => {
+          // Keys pressed on the row's own buttons belong to those buttons.
+          if (event.target !== event.currentTarget) return
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
             showDetails()
@@ -26,20 +28,30 @@ export function ProductRow({ product, onEdit, onToggle }) {
           <small>
             LKR {Number(product.dailyRate).toLocaleString()} / day{' '}
             <span className={`admin-status ${product.active ? 'is-active' : 'is-paused'}`}>
-              {product.active ? 'Active' : 'Inactive'}
+              {product.active ? 'Active' : 'On hold'}
             </span>
           </small>
         </div>
-        <button
-          className="admin-row-action"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            showDetails()
-          }}
-        >
-          View details
-        </button>
+        <div className="admin-row-actions" onClick={(event) => event.stopPropagation()}>
+          <button className="admin-row-action" type="button" onClick={showDetails}>
+            View details
+          </button>
+          {onToggle && (
+            <button className="admin-row-action" type="button" disabled={busy} onClick={onToggle}>
+              {product.active ? 'Hold' : 'Release'}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              className="admin-row-action danger"
+              type="button"
+              disabled={busy}
+              onClick={onDelete}
+            >
+              Delete
+            </button>
+          )}
+        </div>
       </article>
       {detailsOpen && (
         <div
@@ -77,7 +89,7 @@ export function ProductRow({ product, onEdit, onToggle }) {
             <div className="admin-item-summary">
               <b>LKR {Number(product.dailyRate || 0).toLocaleString()} / day</b>
               <span className={`admin-status ${product.active ? 'is-active' : 'is-paused'}`}>
-                {product.active ? 'Active' : 'Inactive'}
+                {product.active ? 'Active' : 'On hold'}
               </span>
             </div>
             <p>{product.description}</p>
@@ -106,16 +118,30 @@ export function ProductRow({ product, onEdit, onToggle }) {
               ))}
             </dl>
             <div className="admin-modal-actions">
+              {onDelete && (
+                <button
+                  type="button"
+                  className="admin-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setDetailsOpen(false)
+                    onDelete()
+                  }}
+                >
+                  Delete
+                </button>
+              )}
               {onToggle && (
                 <button
                   type="button"
                   className="admin-secondary"
+                  disabled={busy}
                   onClick={() => {
-                    onToggle()
                     setDetailsOpen(false)
+                    onToggle()
                   }}
                 >
-                  {product.active ? 'Deactivate' : 'Activate'}
+                  {product.active ? 'Put on hold' : 'Release hold'}
                 </button>
               )}
               {onEdit && (

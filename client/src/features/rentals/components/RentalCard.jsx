@@ -25,6 +25,7 @@ export function RentalCard({
   onAction,
   onInvoice,
   onMessages,
+  onChat,
   onViewDetails,
   onPickup,
   onReturn,
@@ -157,14 +158,6 @@ export function RentalCard({
           <RentalProgress rental={rental} />
           <PickupSection rental={rental} onVerify={onPickup} busy={busy} />
           <CancellationRecord rental={rental} />
-          <button
-            className="cr-button cr-primary cr-view-details"
-            onClick={(event) => onViewDetails(rental, event.currentTarget)}
-            aria-label={`View details for ${shortId(rental._id)}`}
-          >
-            View details
-            <Symbol name="arrow" size={16} />
-          </button>
           <div className="cr-fulfilment">
             <Symbol name={rental.deliveryMethod === 'partner' ? 'truck' : 'box'} size={17} />
             <span>
@@ -177,6 +170,11 @@ export function RentalCard({
                 <small>Partner assigned</small>
               )}
           </div>
+          {[...new Map(rental.items.filter((i) => i.partner).map((i) => [i.partner.phone + i.partner.name, i.partner])).values()].map((partner) =>
+            <div className="cr-fulfilment" key={partner.phone + partner.name}>
+              <Symbol name="truck" size={17} /><span>Assigned rider: <b>{partner.name}</b></span>
+              {partner.phone && <a href={'tel:' + partner.phone.replace(/[^+\d]/g, '')}>{partner.phone}</a>}
+            </div>)}
         </div>
         <aside
           className={`cr-next-step cr-tone-${step.tone}`}
@@ -208,9 +206,24 @@ export function RentalCard({
               <Symbol name="arrow" size={16} />
             </button>
           )}
+          {step.review && (
+            <button
+              className="cr-button cr-primary"
+              onClick={(event) => onViewDetails(rental, event.currentTarget.closest('article'))}
+            >
+              Rate your rental
+              <Symbol name="arrow" size={16} />
+            </button>
+          )}
           {state === 'disputed' && (
             <button className="cr-button cr-secondary" onClick={onMessages}>
               View mailbox
+              <Symbol name="mail" size={16} />
+            </button>
+          )}
+          {onChat && rental.items.some((item) => item.providerRole === 'rental_shop') && (
+            <button className="cr-button cr-secondary" onClick={() => onChat(rental)}>
+              Message the shop
               <Symbol name="mail" size={16} />
             </button>
           )}
@@ -237,7 +250,15 @@ export function RentalCard({
           </div>
         </div>
         <div className="cr-booking-actions">
-          {state === 'confirmed' && rental.deliveryMethod === 'partner' && (
+          <button
+            className="cr-button cr-secondary cr-view-details"
+            onClick={(event) => onViewDetails(rental, event.currentTarget)}
+            aria-label={`View details for ${shortId(rental._id)}`}
+          >
+            View details
+            <Symbol name="arrow" size={15} />
+          </button>
+          {state === 'confirmed' && rental.deliveryMethod === 'partner' && paid && rental.items.every((item) => item.decision === 'accepted') && (
             <button className="cr-button cr-primary" disabled={Boolean(busy)}
               onClick={() => rental.deliveryAssignmentRequestedAt ? onViewDetails(rental) : onAssign(rental)}>
               <Symbol name="box" size={17} />
@@ -320,7 +341,7 @@ export function RentalCard({
               {adjustments.map((adjustment, index) => (
                 <div key={adjustment._id || index}>
                   <dt>
-                    {adjustment.type === 'late_fee' ? 'Late fee' : 'Damage fee'}
+                    {({ late_fee: 'Late fee', damage_fee: 'Damage fee', return_collection: 'Return collection' }[adjustment.type] || 'Fee')}
                     <small>{adjustment.note}</small>
                   </dt>
                   <dd>{money(adjustment.amount)}</dd>

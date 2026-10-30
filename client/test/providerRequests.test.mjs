@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import React from 'react'
 
-let vite, AdminPage, OwnerHome, useProviderRequests, render, screen, waitFor, act, cleanup, userEvent
+let vite, AdminPage, OwnerHome, useProviderRequests, render, screen, within, waitFor, act, cleanup, userEvent
 const dom = new JSDOM('<!doctype html><html lang="en"><head><title>Provider request tests</title></head><body></body></html>', { url: 'http://localhost/' })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, HTMLDialogElement: dom.window.HTMLDialogElement, MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle, requestAnimationFrame: (callback) => setTimeout(callback, 0), IS_REACT_ACT_ENVIRONMENT: true })
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true })
@@ -28,7 +28,7 @@ function adminApi({ snapshot, failOverview = false, onDecision = () => {} }) {
   }
 }
 before(async () => {
-  ;({ render, screen, waitFor, act, cleanup } = await import('@testing-library/react'))
+  ;({ render, screen, within, waitFor, act, cleanup } = await import('@testing-library/react'))
   userEvent = (await import('@testing-library/user-event')).default
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
   AdminPage = (await vite.ssrLoadModule('/src/features/admin/pages/AdminPage.jsx')).default
@@ -38,15 +38,29 @@ before(async () => {
 afterEach(() => cleanup())
 after(async () => { await vite?.close(); dom.window.close() })
 
-test('admin sees and can review shop-assigned requests instead of filtering them by the admin ID', async () => {
+test('admin accepts a request only after confirming the account password', async () => {
   let decided
   adminApi({ snapshot: () => [booking()], onDecision: (url, body) => { decided = { url, body } } })
   const user = userEvent.setup({ document: dom.window.document })
-  render(React.createElement(AdminPage, { user: { id: 'different-admin', username: 'Admin' }, token: 'test-session', onLogout: () => {} }))
-  await user.click(screen.getByRole('button', { name: /Rental requests/ }))
+  render(React.createElement(AdminPage, { user: { id: 'admin', username: 'Admin' }, token: 'test-session', onLogout: () => {} }))
+  await user.click(within(screen.getByRole('navigation', { name: 'Admin sections' })).getByRole('button', { name: /Rental requests/ }))
   assert.ok(await screen.findByRole('heading', { name: 'New camera request' }))
   await user.click(screen.getByRole('button', { name: 'Accept', exact: true }))
-  await waitFor(() => assert.deepEqual(decided, { url: '/api/provider/requests/request-1/items/item-1', body: { decision: 'accepted' } }))
+  assert.equal(decided, undefined, 'nothing is sent before the password is entered')
+  await user.type(screen.getByLabelText('Account password'), 'Admin-password-1')
+  await user.click(screen.getByRole('button', { name: 'Confirm and accept' }))
+  await waitFor(() => assert.deepEqual(decided, { url: '/api/provider/requests/request-1/items/item-1', body: { decision: 'accepted', password: 'Admin-password-1' } }))
+})
+
+test('a locked approval keeps the confirm button disabled and shows the server message', async () => {
+  const api = async () => { throw Object.assign(new Error('Too many incorrect passwords. Try again in 10 minute(s).'), { code: 'APPROVAL_LOCKED', retryAfter: 600 }) }
+  const RentalDecisionDialog = (await vite.ssrLoadModule('/src/features/rentals/components/RentalDecisionDialog.jsx')).default
+  const user = userEvent.setup({ document: dom.window.document })
+  render(React.createElement(RentalDecisionDialog, { target: { requestId: 'request-1', productId: 'item-1', title: 'Camera', decision: 'accepted' }, api, onClose: () => {}, onDecided: () => {} }))
+  await user.type(screen.getByLabelText('Account password'), 'wrong-password')
+  await user.click(screen.getByRole('button', { name: 'Confirm and accept' }))
+  assert.match((await screen.findByRole('alert')).textContent, /Try again in 10 minute/)
+  assert.equal(screen.getByRole('button', { name: 'Approvals locked' }).disabled, true)
 })
 
 test('new admin requests appear on window focus even when an unrelated dashboard endpoint fails', async () => {
@@ -54,8 +68,8 @@ test('new admin requests appear on window focus even when an unrelated dashboard
   adminApi({ snapshot: () => current, failOverview: true })
   const user = userEvent.setup({ document: dom.window.document })
   render(React.createElement(AdminPage, { user: { id: 'admin', username: 'Admin' }, token: 'test-session', onLogout: () => {} }))
-  await user.click(screen.getByRole('button', { name: /Rental requests/ }))
-  await screen.findByText('There are no customer rental requests yet.')
+  await user.click(within(screen.getByRole('navigation', { name: 'Admin sections' })).getByRole('button', { name: /Rental requests/ }))
+  await screen.findByText('There are no customer rental requests for your items yet.')
   current = [booking()]
   await act(async () => window.dispatchEvent(new dom.window.Event('focus')))
   assert.ok(await screen.findByRole('heading', { name: 'New camera request' }))
@@ -67,8 +81,8 @@ test('shop bookings refresh on focus and still render if inventory loading fails
   const api = async (url) => { if (url === '/api/provider/requests') return { requests: current }; throw new Error('Inventory temporarily unavailable.') }
   const user = userEvent.setup({ document: dom.window.document })
   render(React.createElement(OwnerHome, { user: { id: 'shop-1', username: 'Shop' }, api, onLogout: () => {} }))
-  await user.click(screen.getByRole('button', { name: /Bookings/ }))
-  await screen.findByText('Inventory temporarily unavailable.')
+  await user.click(within(screen.getByRole('navigation', { name: 'Owner workspace' })).getByRole('button', { name: /Bookings/ }))
+  await waitFor(() => assert.ok(screen.getAllByRole('alert').some((notice) => notice.textContent === 'Inventory temporarily unavailable.')))
   current = [booking()]
   await act(async () => window.dispatchEvent(new dom.window.Event('focus')))
   assert.ok(await screen.findByRole('heading', { name: 'New camera request' }))

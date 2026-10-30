@@ -7,17 +7,17 @@ import { RentalPhoto } from '../components/RentalPhoto.jsx'
 
 import { formatCurrency as money } from '../../../utils/currency.js'
 
-import ProductDetailsContent from '../components/ProductDetailsContent.jsx'
+import ProductPage from './ProductPage.jsx'
+import useProductRoute from '../hooks/useProductRoute.js'
+import SiteFooter from '../../../components/layout/SiteFooter.jsx'
 
-export function GuestBrowse({ onSignIn }) {
+export function GuestBrowse({ onSignIn, onRegister }) {
   const [products, setProducts] = useState([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [productReviews, setProductReviews] = useState([])
-  const [reviewsLoading, setReviewsLoading] = useState(false)
   useEffect(() => {
     let active = true
     fetch('/api/public/products')
@@ -54,23 +54,13 @@ export function GuestBrowse({ onSignIn }) {
   const suggestions = [...new Set([...categories, ...products.map((item) => item.title)])]
     .filter((item) => search.trim() && normalize(item).includes(normalize(search).trim()))
     .slice(0, 8)
-  const openProductDetails = async (product) => {
-    setSelectedProduct(product)
-    setProductReviews([])
-    setReviewsLoading(true)
-    document.getElementById('guest-product-details')?.showModal()
-    try {
-      const result = await readJsonResponse(
-        await fetch(`/api/public/reviews/product/${product._id}`),
-        'Could not load reviews.',
-      )
-      setProductReviews(result.reviews || [])
-    } catch {
-      setProductReviews([])
-    } finally {
-      setReviewsLoading(false)
-    }
-  }
+  const showProductDetails = (product) => setSelectedProduct(product)
+  const { open: openProductDetails, close: closeProductDetails } = useProductRoute({
+    products,
+    selectedId: selectedProduct?._id,
+    show: showProductDetails,
+    hide: () => setSelectedProduct(null),
+  })
   const handleProductCardKey = (event, product) => {
     if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
       event.preventDefault()
@@ -79,6 +69,7 @@ export function GuestBrowse({ onSignIn }) {
   }
 
   return (
+    <>
     <main className="marketplace guest-marketplace">
       <header className="market-nav">
         <a className="market-brand" href="/">
@@ -186,6 +177,7 @@ export function GuestBrowse({ onSignIn }) {
                 >
                   <div className="listing-image">
                     <RentalPhoto src={item.photos?.[0]} alt={item.title} />
+                    {item.photos?.length > 1 && <span className="listing-image-count">{item.photos.length} photos</span>}
                   </div>
                   <div className="listing-info">
                     <div className="listing-meta">
@@ -193,6 +185,7 @@ export function GuestBrowse({ onSignIn }) {
                       <span>{item.location}</span>
                     </div>
                     <h3>{item.title}</h3>
+                    <span className={`listing-rating${item.ratingCount ? '' : ' is-new'}`}>{item.ratingCount ? `★ ${Number(item.ratingAverage).toFixed(1)} (${item.ratingCount} reviews)` : 'New · no reviews yet'}</span>
                     <p>{item.description}</p>
                     <div className="listing-bottom">
                       <div>
@@ -218,26 +211,18 @@ export function GuestBrowse({ onSignIn }) {
           )}
         </div>
       </div>
-      <dialog
-        className="product-detail-dialog"
-        id="guest-product-details"
-        onClose={() => setSelectedProduct(null)}
-      >
-        <form method="dialog" className="dialog-close">
-          <button aria-label="Close item details">Close</button>
-        </form>
-        {selectedProduct && (
-          <ProductDetailsContent
-            selectedProduct={selectedProduct}
-            productReviews={productReviews}
-            reviewsLoading={reviewsLoading}
-          >
-            <button type="button" className="checkout-submit product-detail-add" onClick={onSignIn}>
-              Sign in to rent this item
-            </button>
-          </ProductDetailsContent>
-        )}
-      </dialog>
+      {selectedProduct && (
+        <ProductPage
+          product={selectedProduct}
+          onBack={closeProductDetails}
+        >
+          <button type="button" className="checkout-submit product-detail-add" onClick={onSignIn}>
+            Sign in to rent this item
+          </button>
+        </ProductPage>
+      )}
     </main>
+    <SiteFooter onSignIn={onSignIn} onRegister={onRegister} onBrowse={() => document.getElementById('guest-listings')?.scrollIntoView({ behavior: 'smooth' })} />
+    </>
   )
 }

@@ -1,8 +1,5 @@
 import mongoose from 'mongoose'
 import bcrypt from 'bcryptjs'
-import { randomUUID } from 'node:crypto'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import { RentalPackage } from '../products/rental-package.model.mjs'
 import { User } from '../users/user.model.mjs'
 import { Product } from '../products/product.model.mjs'
@@ -12,14 +9,20 @@ import { recordAudit } from '../../services/audit.service.js'
 import { Coupon } from '../payments/coupon.model.mjs'
 import { SystemSetting } from './system-setting.model.mjs'
 import { providerRentalRequests } from '../rentals/provider-rentals.service.mjs'
+import { DeliveryTask } from '../delivery/delivery-task.model.mjs'
+import { PartnerPresence } from '../delivery/partner-presence.model.mjs'
+import { Notification } from '../notifications/notification.model.mjs'
+import { IdentityVerification, IdentityDispute } from '../identity/identity.model.mjs'
+import { removeIdentityPhotos } from '../identity/identity-documents.service.mjs'
+import { removeConversationsFor } from '../chat/chat.service.mjs'
 import {
   removeProductPhotos,
   saveProductPhotos,
-  imageTypes,
+  writeProductPhoto,
+  imageBuffer,
 } from '../products/product-images.service.mjs'
 
 import { roles, publicUser } from './admin.service.mjs'
-import { productUploadDirectory as uploadDir } from '../../config/paths.js'
 
 export const getOverview = async (_req, res) => {
   const weekStart = new Date()
@@ -174,6 +177,7 @@ export const updateSettings = async (req, res) => {
   })
 }
 
+const paid = { $and: [{ $ne: ['$status', 'cancelled'] }, { $in: ['$payment.status', ['authorized', 'paid', 'refunded', 'partially_refunded']] }] }
 export const getRevenueReport = async (_req, res) => {
   const [summary] = await RentalRequest.aggregate([
     {
@@ -185,15 +189,18 @@ export const getRevenueReport = async (_req, res) => {
             $cond: [{ $in: ['$status', ['confirmed', 'active', 'returned', 'completed']] }, 1, 0],
           },
         },
-        rentalCollected: { $sum: '$payment.rentalPaid' },
-        depositsHeld: { $sum: '$payment.depositHeld' },
-        depositsRefunded: { $sum: '$payment.depositRefunded' },
-        deliveryFees: { $sum: '$deliveryFee' },
+        // Every money figure uses the same rule: paid and not cancelled.
+        paidBookings: { $sum: { $cond: [paid, 1, 0] } },
+        rentalCollected: { $sum: { $cond: [paid, '$payment.rentalPaid', 0] } },
+        depositsHeld: { $sum: { $cond: [paid, '$payment.depositHeld', 0] } },
+        depositsRefunded: { $sum: { $cond: [paid, '$payment.depositRefunded', 0] } },
+        deliveryFees: { $sum: { $cond: [paid, '$deliveryFee', 0] } },
+        adjustmentsRetained: { $sum: { $cond: [paid, { $sum: '$payment.adjustments.amount' }, 0] } },
       },
     },
   ])
   const byDay = await RentalRequest.aggregate([
-    { $match: { 'payment.paidAt': { $type: 'date' } } },
+    { $match: { 'payment.paidAt': { $type: 'date' }, status: { $ne: 'cancelled' }, 'payment.status': { $in: ['authorized', 'paid', 'refunded', 'partially_refunded'] } } },
     {
       $group: {
         _id: {
@@ -209,6 +216,7 @@ export const getRevenueReport = async (_req, res) => {
   const result = summary || {
     bookings: 0,
     confirmedBookings: 0,
+    paidBookings: 0,
     rentalCollected: 0,
     depositsHeld: 0,
     depositsRefunded: 0,
@@ -218,7 +226,7 @@ export const getRevenueReport = async (_req, res) => {
     ...result,
     adjustmentsRetained: Math.max(
       0,
-      Number(result.depositsHeld || 0) - Number(result.depositsRefunded || 0),
+      Number(result.adjustmentsRetained || 0),
     ),
     byDay,
   })
@@ -484,6 +492,85 @@ export const updateUser = async (req, res) => {
   res.json({ message: 'Account updated.', user: publicUser(user) })
 }
 
+// Deleting is permanent, so it is only allowed for records no booking or delivery refers to.
+// Anything with history is put on hold instead, which keeps receipts and disputes intact.
+const rentalHistoryFor = (productIds, userId) =>
+  RentalRequest.exists({
+    $or: [
+      { 'items.productId': { $in: productIds } },
+      { 'declinedItems.productId': { $in: productIds } },
+      ...(userId
+        ? [
+            { customerId: userId },
+            { 'items.providerId': userId },
+            { 'items.assignedPartner': userId },
+            { 'declinedItems.providerId': userId },
+          ]
+        : []),
+    ],
+  })
+
+async function removeListings(products) {
+  const ids = products.map((product) => product._id)
+  if (!ids.length) return
+  await Product.deleteMany({ _id: { $in: ids } })
+  await Promise.all([
+    RentalPackage.updateMany(
+      { $or: [{ productIds: { $in: ids } }, { optionalAddOnIds: { $in: ids } }] },
+      { $pull: { productIds: { $in: ids }, optionalAddOnIds: { $in: ids } } },
+    ),
+    User.updateMany({ wishlist: { $in: ids } }, { $pull: { wishlist: { $in: ids } } }),
+  ])
+  // A package left without any required item can no longer be booked.
+  await RentalPackage.updateMany({ productIds: { $size: 0 } }, { active: false })
+  await removeProductPhotos(products.flatMap((product) => product.photos))
+}
+
+export const deleteUser = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id))
+    return res.status(404).json({ message: 'Account not found.' })
+  const target = await User.findById(req.params.id).select('role username')
+  if (!target) return res.status(404).json({ message: 'Account not found.' })
+  if (target.role === 'admin')
+    return res
+      .status(400)
+      .json({ message: 'Administrator accounts are protected from user management actions.' })
+  const products = await Product.find({
+    $or: [{ providerId: target._id }, { createdBy: target._id }],
+  })
+  const [rentals, deliveries] = await Promise.all([
+    rentalHistoryFor(
+      products.map((product) => product._id),
+      target._id,
+    ),
+    DeliveryTask.exists({
+      $or: [{ customerId: target._id }, { providerId: target._id }, { assignedPartner: target._id }],
+    }),
+  ])
+  if (rentals || deliveries)
+    return res.status(409).json({
+      message: `${target.username} has rental or delivery history, so the account cannot be deleted. Put it on hold instead.`,
+    })
+  const identity = await IdentityVerification.findOne({ userId: target._id }).select('+front +back')
+  await User.deleteOne({ _id: target._id })
+  await removeListings(products)
+  await Promise.all([
+    Notification.deleteMany({ userId: target._id }),
+    IdentityVerification.deleteMany({ userId: target._id }),
+    IdentityDispute.deleteMany({ userId: target._id }),
+    PartnerPresence.deleteMany({ partnerId: target._id }),
+    removeConversationsFor(target._id),
+  ])
+  await removeIdentityPhotos([identity?.front, identity?.back])
+  recordAudit(req, {
+    action: 'account.deleted',
+    entityType: 'user',
+    entityId: target._id,
+    summary: `Deleted ${target.role} account ${target.username}${products.length ? ` and ${products.length} listing(s)` : ''}.`,
+  })
+  res.json({ message: `Account ${target.username} deleted.` })
+}
+
 export const listPendingShops = async (_req, res) => {
   const shops = await User.find({ role: 'rental_shop', shopStatus: 'pending' })
     .select('username email phone shopName createdAt')
@@ -557,6 +644,7 @@ export const updateProduct = async (req, res) => {
     if (typeof req.body.active !== 'boolean')
       return res.status(400).json({ message: 'Listing status must be active or inactive.' })
     updates.active = req.body.active
+    updates.adminDisabled = !req.body.active
   }
   const existing = await Product.findById(req.params.id)
   if (!existing) return res.status(404).json({ message: 'Product not found.' })
@@ -564,7 +652,7 @@ export const updateProduct = async (req, res) => {
     removedImagePaths = []
   if (req.body.photos !== undefined) {
     try {
-      const result = await saveProductPhotos(req.body.photos, existing.photos, uploadDir)
+      const result = await saveProductPhotos(req.body.photos, existing.photos)
       updates.photos = result.photos
       newImagePaths = result.newPaths
       removedImagePaths = existing.photos.filter((photo) => !result.photos.includes(photo))
@@ -581,11 +669,11 @@ export const updateProduct = async (req, res) => {
       runValidators: true,
     })
   } catch (error) {
-    await removeProductPhotos(newImagePaths, uploadDir)
+    await removeProductPhotos(newImagePaths)
     throw error
   }
   if (!product) return res.status(404).json({ message: 'Product not found.' })
-  await removeProductPhotos(removedImagePaths, uploadDir)
+  await removeProductPhotos(removedImagePaths)
   recordAudit(req, {
     action: 'product.updated',
     entityType: 'product',
@@ -622,22 +710,8 @@ export const createProduct = async (req, res) => {
     return res.status(400).json({ message: 'Add between 1 and 6 product photos.' })
   const savedPaths = []
   try {
-    const imageBuffers = photos.map((photo) => {
-      const match =
-        typeof photo === 'string' &&
-        photo.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
-      if (!match || !imageTypes[match[1]]) throw new Error('Use JPEG, PNG, or WebP product photos.')
-      const buffer = Buffer.from(match[2], 'base64')
-      if (!buffer.length || buffer.length > 3 * 1024 * 1024)
-        throw new Error('Each photo must be smaller than 3 MB.')
-      return { buffer, extension: imageTypes[match[1]] }
-    })
-    await mkdir(uploadDir, { recursive: true })
-    for (const image of imageBuffers) {
-      const filename = `${randomUUID()}.${image.extension}`
-      await writeFile(path.join(uploadDir, filename), image.buffer, { flag: 'wx' })
-      savedPaths.push(`/uploads/products/${filename}`)
-    }
+    const imageBuffers = photos.map(imageBuffer)
+    for (const image of imageBuffers) savedPaths.push(await writeProductPhoto(image))
     const provider = req.body.providerId
       ? await User.findOne({
           _id: req.body.providerId,
@@ -647,7 +721,7 @@ export const createProduct = async (req, res) => {
         })
       : null
     if (req.body.providerId && !provider)
-      throw new Error('Choose an active, approved rental shop as provider.')
+      throw Object.assign(new Error('Choose an active, approved rental shop as provider.'), { status: 400 })
     const product = await Product.create({
       title: title.trim(),
       category: category.trim(),
@@ -668,33 +742,28 @@ export const createProduct = async (req, res) => {
     })
     res.status(201).json({ message: 'Product published.', product })
   } catch (error) {
+    await removeProductPhotos(savedPaths)
+    if (error.status === 400) return res.status(400).json({ message: error.message })
     console.error('Admin product creation failed:', error)
-    await Promise.all(
-      savedPaths.map((savedPath) =>
-        unlink(path.join(uploadDir, path.basename(savedPath))).catch(() => {}),
-      ),
-    )
-    res
-      .status(
-        error.message.startsWith('Use JPEG') || error.message.startsWith('Each photo') ? 400 : 500,
-      )
-      .json({
-        message:
-          error.message.startsWith('Use JPEG') || error.message.startsWith('Each photo')
-            ? error.message
-            : 'Could not publish this product.',
-      })
+    res.status(500).json({ message: 'Could not publish this product.' })
   }
 }
 
-export const deactivateProduct = async (req, res) => {
-  const product = await Product.findByIdAndUpdate(req.params.id, { active: false }, { new: true })
+export const deleteProduct = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id))
+    return res.status(404).json({ message: 'Product not found.' })
+  const product = await Product.findById(req.params.id)
   if (!product) return res.status(404).json({ message: 'Product not found.' })
+  if (await rentalHistoryFor([product._id]))
+    return res.status(409).json({
+      message: `${product.title} has rental history, so it cannot be deleted. Put it on hold instead.`,
+    })
+  await removeListings([product])
   recordAudit(req, {
-    action: 'product.deactivated',
+    action: 'product.deleted',
     entityType: 'product',
     entityId: product._id,
-    summary: `Deactivated product listing ${product.title}.`,
+    summary: `Deleted product listing ${product.title}.`,
   })
-  res.json({ message: 'Product removed from active listings.' })
+  res.json({ message: `${product.title} deleted.` })
 }

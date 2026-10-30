@@ -3,8 +3,10 @@ import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { RentalRequest } from './rental.model.mjs'
 import { User } from '../users/user.model.mjs'
 import { Product } from '../products/product.model.mjs'
+import { pointsForItems } from '../loyalty/loyalty.service.mjs'
 import { AuditLog } from '../admin/audit-log.model.mjs'
 import { Notification } from '../notifications/notification.model.mjs'
+import { publishHandoverOtp, removeHandoverOtp } from '../notifications/handover-notifications.service.mjs'
 import { identityRate } from '../identity/identity-security.service.mjs'
 import { sendRegistrationOtp } from '../../config/mailer.js'
 import { requireTransactions } from '../../services/mongo-transactions.mjs'
@@ -39,8 +41,6 @@ async function context(id, actor, session) {
     throw fail(409, 'INVALID_RETURN', 'Only a rental with a verified pickup currently on rental can be returned.')
   if (rental.returnMethod === 'partner' || rental.deliveryReturnRequestedAt)
     throw fail(409, 'RETURN_IN_PROGRESS', 'Partner collection is already requested. Follow its verified handovers.')
-  if (rental.returnOtpVerifiedAt || rental.handover?.return?.status === 'sent')
-    throw fail(409, 'RETURN_IN_PROGRESS', 'Complete the existing return verification before starting a different return.')
   return rental
 }
 
@@ -60,7 +60,7 @@ export async function selfReturnState(id, actor) {
 export async function sendSelfReturn(id, actor, providerId, sendEmail = sendRegistrationOtp) {
   await identityRate(actor._id, 'self-return-send', 20)
   await requireTransactions()
-  let challenge, recipient
+  let challenge, recipient, previousId
   const code = String(randomInt(0, 1000000)).padStart(6, '0')
   await mongoose.connection.transaction(async (session) => {
     const rental = await context(id, actor, session)
@@ -71,11 +71,12 @@ export async function sendSelfReturn(id, actor, providerId, sendEmail = sendRegi
     if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email || ''))
       throw fail(409, 'EMAIL_REQUIRED', 'The responsible shop needs an active account and registered email.')
     const previous = rental.selfReturns.find((c) => same(c.providerId, providerId))
+    previousId = previous?.challengeId
     if (previous?.status === 'verified') throw fail(409, 'ALREADY_VERIFIED', 'This shop return is already verified.')
     if (previous?.sentAt && Date.now() - previous.sentAt < 60000)
       throw fail(429, 'OTP_COOLDOWN', 'Wait 60 seconds before requesting another code.')
     const [name, domain] = recipient.email.split('@')
-    challenge = { providerId, recipientId: recipient._id, challengeId: randomUUID(),
+    challenge = { providerId, recipientId: recipient._id, initiatedBy: actor._id, challengeId: randomUUID(),
       maskedEmail: name.slice(0, 1) + '***@' + domain, emailHash: emailHash(recipient.email),
       status: 'sending', attempts: 0, sentAt: new Date(), expiresAt: new Date(Date.now() + 300000) }
     challenge.hash = codeHash(rental, challenge, code)
@@ -84,18 +85,23 @@ export async function sendSelfReturn(id, actor, providerId, sendEmail = sendRegi
     else rental.selfReturns.push(challenge)
     await rental.save({ session })
   })
+  if (previousId) await removeHandoverOtp(previousId)
   try {
     await sendEmail(recipient.email, code, { subject: 'RentEase self return verification',
       text: `Your RentEase return receipt code is ${code}. It expires in 5 minutes. After receiving your items for booking #${id}, give this code to the customer. The customer verifies it in RentEase to confirm your receipt.` })
+    await mongoose.connection.transaction(async (session) => {
+      const result = await RentalRequest.updateOne({ _id: id, status: 'active', returnMethod: 'pickup',
+        selfReturns: { $elemMatch: { challengeId: challenge.challengeId, status: 'sending' } } },
+        { $set: { 'selfReturns.$.status': 'sent' }, $inc: { __v: 1 } }, { session })
+      if (!result.modifiedCount) throw fail(409, 'RENTAL_CHANGED', 'The rental changed while sending the code.')
+      await publishHandoverOtp({ recipientId: recipient._id, rentalId: id,
+        challengeId: challenge.challengeId, code, stage: 'self return', expiresAt: challenge.expiresAt }, session)
+    })
   } catch {
     await RentalRequest.updateOne({ _id: id, selfReturns: { $elemMatch: { challengeId: challenge.challengeId, status: 'sending' } } },
       { $set: { 'selfReturns.$.status': 'failed' }, $unset: { 'selfReturns.$.hash': 1 } })
-    throw fail(502, 'EMAIL_FAILED', 'The shop email could not be sent. Retry after 60 seconds.')
+    throw fail(502, 'OTP_DELIVERY_FAILED', 'The email and private notification could not both be delivered. This code is invalid. Retry after 60 seconds.')
   }
-  const result = await RentalRequest.updateOne({ _id: id, status: 'active', returnMethod: 'pickup',
-    selfReturns: { $elemMatch: { challengeId: challenge.challengeId, status: 'sending' } } },
-    { $set: { 'selfReturns.$.status': 'sent' }, $inc: { __v: 1 } })
-  if (!result.modifiedCount) throw fail(409, 'RENTAL_CHANGED', 'The rental changed while the email was sending. Refresh to continue.')
   return { message: 'Code sent to the responsible shop. Ask for it after returning the items.', ...(await selfReturnState(id, actor)) }
 }
 
@@ -106,6 +112,7 @@ export async function verifySelfReturn(id, actor, input) {
   const snapshot = await context(id, actor)
   const c = snapshot.selfReturns.find((c) => c.challengeId === input.challengeId)
   if (!c || c.status !== 'sent') throw fail(409, 'CODE_USED', 'This code is unavailable or already used.')
+  if (!same(c.initiatedBy, actor._id)) throw fail(403, 'WRONG_VERIFIER', 'Send a new return code from your account.')
   if (c.expiresAt <= new Date()) throw fail(410, 'OTP_EXPIRED', 'The code expired. Request a new code.')
   const attempt = await RentalRequest.updateOne({ _id: id, status: 'active', returnMethod: 'pickup',
     selfReturns: { $elemMatch: { challengeId: c.challengeId, status: 'sent', attempts: { $lt: 5 }, expiresAt: { $gt: new Date() } } } },
@@ -126,6 +133,8 @@ export async function verifySelfReturn(id, actor, input) {
     current.verifiedAt = new Date()
     current.verifiedBy = actor._id
     current.hash = undefined
+    current.emailHash = undefined
+    await removeHandoverOtp(c.challengeId, session)
     returned = providerIds(rental).every((providerId) => rental.selfReturns.some((c) => same(c.providerId, providerId) && c.status === 'verified'))
     if (returned) {
       rental.status = 'returned'
@@ -134,11 +143,11 @@ export async function verifySelfReturn(id, actor, input) {
       rental.returnVerifiedBy = actor._id
       await Product.updateMany({ 'rentalSlots.requestId': rental._id },
         { $pull: { rentalSlots: { requestId: rental._id } }, $inc: { __v: 1 } }, { session })
-      await User.updateOne({ _id: rental.customerId }, { $inc: { loyaltyPoints: rental.items.reduce(
-        (n, i) => n + Math.max(1, Math.floor(Number(i.rentalAmount || 0) / 1000)), 0) } }, { session })
+      await User.updateOne({ _id: rental.customerId }, { $inc: { loyaltyPoints: pointsForItems(rental.items) } }, { session })
     }
     rental.statusHistory.push({ previousStatus: 'active', status: rental.status,
       action: 'return.self.verified', verificationId: c.challengeId, by: actor._id,
+      senderId: actor._id, recipientId: c.recipientId,
       note: 'Customer verified the responsible shop receipt code.' })
     await rental.save({ session })
     await AuditLog.create([{ actorId: actor._id, actorRole: actor.role, action: 'return.self.verified',

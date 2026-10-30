@@ -11,20 +11,12 @@ export default function ShopOverview({
   products,
   requests,
   setSection,
-  user,
 }) {
+  // Only bookings with an item still waiting for this shop's decision need attention.
+  const toReview = requests.filter((request) =>
+    ['pending', 'confirmed'].includes(request.status) && request.items.some((item) => item.decision === 'pending'))
   return (
     <>
-      <div className="business-welcome">
-        <div>
-          <span className="workspace-kicker">SHOP OVERVIEW</span>
-          <h2>{user.shopName || user.username}</h2>
-          <p>Manage your catalog and respond to customer requests in one place.</p>
-        </div>
-        <button onClick={() => setSection('add')}>
-          <UiIcon name="plus" size={17} /> Add a rental item
-        </button>
-      </div>
       <div className="business-stat-grid">
         <article>
           <span className="business-stat-icon blue">
@@ -54,34 +46,32 @@ export default function ShopOverview({
           <span className="business-stat-icon violet">
             <UiIcon name="wallet" />
           </span>
-          <small>Accepted rental value</small>
+          <small>Paid booking value</small>
           <b>{currency(bookedValue)}</b>
-          <em>Rental amount, not collected payments</em>
+          <em>Your items on paid bookings, before commission</em>
         </article>
       </div>
       <div className="business-overview-grid">
         <section className="workspace-card">
           <div className="workspace-card-head">
             <div>
-              <small className="workspace-kicker">NEEDS ATTENTION</small>
-              <h2>Latest booking requests</h2>
+              <h2>Requests to review</h2>
             </div>
             <button onClick={() => setSection('bookings')}>View all →</button>
           </div>
-          {requests.length ? (
-            requests
+          {toReview.length ? (
+            toReview
               .slice(0, 4)
               .map((request) => (
                 <BookingRow key={request._id} request={request} decide={decide} busy={busy} />
               ))
           ) : (
-            <div className="workspace-empty">New customer bookings will appear here.</div>
+            <div className="workspace-empty">You’re all caught up. New requests will appear here.</div>
           )}
         </section>
         <section className="workspace-card">
           <div className="workspace-card-head">
             <div>
-              <small className="workspace-kicker">CATALOG SNAPSHOT</small>
               <h2>Recently listed</h2>
             </div>
             <button onClick={() => setSection('inventory')}>Inventory →</button>
@@ -105,22 +95,6 @@ export default function ShopOverview({
           )}
         </section>
       </div>
-      <section className="workspace-roadmap">
-        <span>WORKSPACE CAPABILITIES</span>
-        <div>
-          <b>Available now</b>
-          <p>
-            Inventory, booking decisions, date conflict protection, and assigned delivery updates.
-          </p>
-        </div>
-        <div>
-          <b>Next platform services</b>
-          <p>
-            Online payment, deposits and refunds, weekly/hourly pricing, invoices, and package
-            builder.
-          </p>
-        </div>
-      </section>
     </>
   )
 }

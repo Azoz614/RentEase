@@ -97,6 +97,7 @@ const taskSchema = new mongoose.Schema(
         partnerId: mongoose.Schema.Types.ObjectId,
         providerId: mongoose.Schema.Types.ObjectId,
         recipientId: mongoose.Schema.Types.ObjectId,
+        initiatedBy: mongoose.Schema.Types.ObjectId,
         verifiedBy: mongoose.Schema.Types.ObjectId,
       },
     ],

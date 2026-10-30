@@ -1,4 +1,5 @@
 import { IdentityStatusCard } from '../../identity/components/IdentityStatusCard.jsx'
+import { OtpInput } from '../../../components/ui/OtpInput.jsx'
 
 import Icon from './AccountIcon.jsx'
 import ProfileEditActions from './ProfileEditActions.jsx'
@@ -54,6 +55,12 @@ export default function AccountSettingsDialog({
     savePassword,
     switchSettingsSection,
   } = settings
+  // NIC, residential address and identity checks only apply to customers who rent items.
+  const customer = !user.role || user.role === 'user'
+  const accountType =
+    { rental_shop: 'Shop owner', delivery_partner: 'Delivery partner', admin: 'Administrator' }[
+      user.role
+    ] || 'Customer'
   return (
     <dialog className="profile-dialog account-settings-dialog" id="profile-settings">
       <form method="dialog" className="dialog-close">
@@ -78,15 +85,19 @@ export default function AccountSettingsDialog({
           <p>
             {
               {
-                profile: 'Manage your name and identity details.',
-                contact: 'Manage your email, phone, and rental address.',
+                profile: customer
+                  ? 'Manage your name and identity details.'
+                  : 'Manage the name shown on your account.',
+                contact: customer
+                  ? 'Manage your email, phone, and rental address.'
+                  : 'Manage your email address and phone number.',
                 security: 'Keep your account protected.',
                 verification: 'Manage your identity verification.',
               }[activeSettingsSection]
             }
           </p>
         </div>
-        <span className="account-type-pill">Customer</span>
+        <span className="account-type-pill">{accountType}</span>
       </div>
       <nav className="account-settings-tabs" aria-label="Account settings sections">
         <button
@@ -113,14 +124,16 @@ export default function AccountSettingsDialog({
           <Icon name="security" />
           Security
         </button>
-        <button
-          type="button"
-          className={activeSettingsSection === 'verification' ? 'active' : ''}
-          onClick={() => switchSettingsSection('verification')}
-        >
-          <Icon name="settings" />
-          Verification
-        </button>
+        {customer && (
+          <button
+            type="button"
+            className={activeSettingsSection === 'verification' ? 'active' : ''}
+            onClick={() => switchSettingsSection('verification')}
+          >
+            <Icon name="settings" />
+            Verification
+          </button>
+        )}
       </nav>
       <form className="profile-form account-profile-form" onSubmit={saveProfile}>
         {activeSettingsSection === 'profile' && (
@@ -131,7 +144,13 @@ export default function AccountSettingsDialog({
               </span>
               <div>
                 <h3>Profile</h3>
-                <p>Your name and national identity number.</p>
+                <p>
+                  {customer
+                    ? 'Your name and national identity number.'
+                    : user.role === 'rental_shop'
+                      ? 'Your name and registered shop.'
+                      : 'The name shown on your account.'}
+                </p>
               </div>
               {editingProfileSection === 'profile' ? (
                 <button type="button" className="settings-edit-button" onClick={cancelProfileEdit}>
@@ -163,13 +182,22 @@ export default function AccountSettingsDialog({
                   required
                 />
               </label>
-              <label>
-                NIC verification
-                <input value={identityProfile?.maskedNic || 'Not submitted'} readOnly />
-                <button type="button" className="iv-back" onClick={openVerification}>
-                  Manage identity verification →
-                </button>
-              </label>
+              {customer && (
+                <label>
+                  NIC verification
+                  <input value={identityProfile?.maskedNic || 'Not submitted'} readOnly />
+                  <button type="button" className="iv-back" onClick={openVerification}>
+                    Manage identity verification →
+                  </button>
+                </label>
+              )}
+              {user.role === 'rental_shop' && (
+                <label>
+                  Registered shop name
+                  <input value={user.shopName || 'Not set'} readOnly />
+                  <small>Contact RentEase support to change your registered shop name.</small>
+                </label>
+              )}
             </div>
             {editingProfileSection === 'profile' && (
               <ProfileEditActions
@@ -199,7 +227,11 @@ export default function AccountSettingsDialog({
               </span>
               <div>
                 <h3>Contact information</h3>
-                <p>Where we can reach you and where rentals should be delivered.</p>
+                <p>
+                  {customer
+                    ? 'Where we can reach you and where rentals should be delivered.'
+                    : 'Where RentEase can reach you.'}
+                </p>
               </div>
               {editingProfileSection === 'contact' ? (
                 <button type="button" className="settings-edit-button" onClick={cancelProfileEdit}>
@@ -259,28 +291,19 @@ export default function AccountSettingsDialog({
                       {emailOtpMessage && (
                         <small className="settings-note">{emailOtpMessage}</small>
                       )}
-                      <input
-                        aria-label="New email verification code"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        maxLength="6"
-                        placeholder="6-digit code sent to new email"
-                        value={emailOtp}
-                        onChange={(event) =>
-                          setEmailOtp(event.target.value.replace(/\D/g, '').slice(0, 6))
-                        }
-                        required
-                      />
+                      <OtpInput label="New email verification code" value={emailOtp} onChange={setEmailOtp} disabled={busy} />
                     </>
                   )}
               </label>
-              <label className="settings-field-wide">
-                Default address
-                <input value={savedAddress} readOnly />
-                <button type="button" className="iv-back" onClick={openAddresses}>
-                  Manage addresses securely →
-                </button>
-              </label>
+              {customer && (
+                <label className="settings-field-wide">
+                  Default address
+                  <input value={savedAddress} readOnly />
+                  <button type="button" className="iv-back" onClick={openAddresses}>
+                    Manage addresses securely →
+                  </button>
+                </label>
+              )}
             </div>
             {editingProfileSection === 'contact' && (
               <ProfileEditActions
@@ -370,18 +393,7 @@ export default function AccountSettingsDialog({
                 >
                   Send code to account email
                 </button>
-                <input
-                  aria-label="Password change verification code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength="6"
-                  placeholder="6-digit verification code"
-                  value={passwordOtp}
-                  onChange={(event) =>
-                    setPasswordOtp(event.target.value.replace(/\D/g, '').slice(0, 6))
-                  }
-                  required
-                />
+                <OtpInput label="Password change verification code" value={passwordOtp} onChange={setPasswordOtp} disabled={busy} />
                 {passwordOtpMessage && (
                   <small className="settings-note">{passwordOtpMessage}</small>
                 )}
@@ -430,7 +442,7 @@ export default function AccountSettingsDialog({
           </form>
         </section>
       )}
-      {activeSettingsSection === 'verification' && (
+      {customer && activeSettingsSection === 'verification' && (
         <IdentityStatusCard
           identity={identityProfile}
           onOpen={openVerification}

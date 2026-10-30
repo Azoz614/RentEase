@@ -30,7 +30,7 @@ export function DeliveryPricing({ api }) {
       setSettings(result.settings)
       setNotice(result.message)
     } catch (failure) {
-      setError(failure.message)
+      if (!failure.cancelled) setError(failure.message)
     } finally {
       setBusy(false)
     }

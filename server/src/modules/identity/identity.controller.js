@@ -4,6 +4,7 @@ import { IdentityVerification, IdentityDispute } from './identity.model.mjs'
 import { User } from '../users/user.model.mjs'
 import { AuditLog } from '../admin/audit-log.model.mjs'
 import { Notification } from '../notifications/notification.model.mjs'
+import { currentNotificationFilter } from '../notifications/handover-notifications.service.mjs'
 import { RentalRequest } from '../rentals/rental.model.mjs'
 import {
   customerIdentityView,
@@ -131,7 +132,7 @@ export const updateNotification = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id) || typeof req.body.read !== 'boolean')
     throw identityError(400, 'INVALID_NOTIFICATION', 'Choose a notification and read status.')
   const notice = await Notification.findOneAndUpdate(
-    { _id: req.params.id, userId: req.user._id },
+    { _id: req.params.id, userId: req.user._id, ...currentNotificationFilter() },
     { $set: { readAt: req.body.read ? new Date() : null } },
     { returnDocument: 'after' },
   )

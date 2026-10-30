@@ -1,20 +1,31 @@
 import nodemailer from 'nodemailer'
 
-const port = Number(process.env.SMTP_PORT)
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port,
-  secure: port === 465,
-  connectionTimeout: 30_000,
-  greetingTimeout: 30_000,
-  socketTimeout: 30_000,
-  dnsTimeout: 30_000,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+// Created on first use so the Cloudflare Worker can populate process.env first.
+let transporter
+let getSocket
+// The Cloudflare Worker supplies sockets opened by hostname (src/worker/smtp-socket.mjs).
+export function configureSmtpSockets(provider) {
+  getSocket = provider
+  transporter = undefined
+}
+function transport() {
+  const port = Number(process.env.SMTP_PORT)
+  transporter ??= nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: port === 465,
+    connectionTimeout: 30_000,
+    greetingTimeout: 30_000,
+    socketTimeout: 30_000,
+    dnsTimeout: 30_000,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    ...(getSocket && { getSocket }),
+  })
+  return transporter
+}
 
 const retryableTransportErrors = new Set([
   'EDNS',
@@ -34,9 +45,16 @@ const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
 async function sendMail(message) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await transporter.sendMail(message)
+      return await transport().sendMail(message)
     } catch (error) {
-      if (attempt || !retryableTransportErrors.has(error?.code)) throw error
+      if (attempt || !retryableTransportErrors.has(error?.code)) {
+        // Log only transport metadata; SMTP replies may contain recipient addresses.
+        console.error(
+          `Email delivery failed: ${error?.code || error?.name} during ${error?.command || 'send'}` +
+            (error?.responseCode ? ` - ${error.responseCode}` : ''),
+        )
+        throw error
+      }
       await pause(1_000)
     }
   }

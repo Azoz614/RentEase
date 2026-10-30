@@ -11,6 +11,8 @@ import { identityRate } from '../identity/identity-security.service.mjs'
 import { notify } from '../notifications/rental-notifications.service.mjs'
 import { rentalAmount, rentalPeriod } from '../rentals/rental-pricing.service.mjs'
 import { priceCoupon } from '../payments/coupon.service.mjs'
+import { loyaltyRewardAmount, loyaltySummary, pointsForItems } from '../loyalty/loyalty.service.mjs'
+import { fromOneShop, MULTIPLE_SHOPS_MESSAGE } from '../rentals/single-shop.mjs'
 
 export const quoteDelivery = async (req, res) => {
   if (req.user.role !== 'user')
@@ -28,14 +30,23 @@ export const quoteDelivery = async (req, res) => {
   )
   if (products.length !== ids.length)
     return res.status(409).json({ message: 'A cart listing is no longer available.' })
+  if (!fromOneShop(products))
+    return res.status(409).json({ code: 'MULTIPLE_SHOPS', message: MULTIPLE_SHOPS_MESSAGE })
   try {
     let pricing
     if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
       const period = rentalPeriod(req.body.startDate, req.body.endDate, req.body.billingUnit)
-      const items = products.map((product) => ({
-        productId: product._id,
-        rentalAmount: rentalAmount(product, period),
-      }))
+      // Mirrors createRental so the quoted total matches the booking.
+      const rewardProductId = req.body.loyaltyRewardProductId ? String(req.body.loyaltyRewardProductId) : ''
+      if (rewardProductId && !ids.includes(rewardProductId))
+        return res.status(400).json({ message: 'Choose an item in your cart for your loyalty reward.' })
+      if (rewardProductId && loyaltySummary(req.user).rewardsAvailable < 1)
+        return res.status(409).json({ message: 'You have no loyalty reward available. Reach the next level to unlock one.' })
+      const items = products.map((product) => {
+        const amount = rentalAmount(product, period)
+        const loyaltyDiscount = String(product._id) === rewardProductId ? loyaltyRewardAmount(amount) : 0
+        return { productId: product._id, rentalAmount: amount - loyaltyDiscount, loyaltyDiscount }
+      })
       const subtotal = items.reduce((sum, item) => sum + item.rentalAmount, 0)
       let discount
       try {
@@ -51,6 +62,7 @@ export const quoteDelivery = async (req, res) => {
         durationHours: period.billableHours,
         discountAmount: discount.discountAmount,
         couponCode: discount.coupon?.code || '',
+        loyaltyDiscount: items.reduce((sum, item) => sum + item.loyaltyDiscount, 0),
         depositAmount: products.reduce(
           (sum, product) => sum + Number(product.depositAmount || 0),
           0,
@@ -84,7 +96,7 @@ export const quoteDelivery = async (req, res) => {
   } catch (error) {
     return res
       .status(error.status || 502)
-      .json({ message: error.message || 'Could not calculate a delivery route.' })
+      .json({ message: error.status ? error.message : 'Could not calculate a delivery route. Try again shortly.' })
   }
 }
 
@@ -182,8 +194,7 @@ export const updateAssignmentStatus = async (req, res) => {
   const labels = Object.fromEntries(
     deliveryStages.map((stage) => [stage, stage.replaceAll('_', ' ')]),
   )
-  const pointsAwarded =
-    status === 'returned' ? Math.max(1, Math.floor(Number(item.rentalAmount || 0) / 1000)) : 0
+  const pointsAwarded = status === 'returned' ? pointsForItems([item]) : 0
   if (pointsAwarded)
     await User.updateOne({ _id: request.customerId }, { $inc: { loyaltyPoints: pointsAwarded } })
   await notify(

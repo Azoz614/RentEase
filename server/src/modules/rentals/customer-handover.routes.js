@@ -1,9 +1,9 @@
 import { verificationError } from '../../middleware/workflow-error.mjs'
 import { Router } from 'express'
 import { requireUser } from '../../middleware/auth.mjs'
+import { selfReturnState, sendSelfReturn, verifySelfReturn } from './self-return.service.mjs'
 import {
   customerPickupChallenge,
-  customerReturnChallenge,
   initiateVerification,
 } from './handover.service.mjs'
 
@@ -32,18 +32,15 @@ export function createCustomerPickupRouter(dependencies = {}) {
     ),
   )
   router.get('/requests/:id/return', async (req, res) =>
-    res.json(await customerReturnChallenge({ rentalId: req.params.id, actor: req.user })),
+    res.json(await selfReturnState(req.params.id, req.user)),
   )
-  router.post('/requests/:id/return/send', async (req, res) =>
-    res.json(
-      await initiateVerification({
-        ...dependencies,
-        rentalId: req.params.id,
-        type: 'return',
-        actor: req.user,
-        customerFlow: true,
-      }),
-    ),
+  router.post('/requests/:id/return/send', async (req, res) => {
+    const state = await selfReturnState(req.params.id, req.user)
+    const providerId = req.body?.providerId || (state.handovers.length === 1 ? state.handovers[0].providerId : null)
+    res.json(await sendSelfReturn(req.params.id, req.user, providerId, dependencies.sendEmail))
+  })
+  router.post('/requests/:id/return/verify', async (req, res) =>
+    res.json(await verifySelfReturn(req.params.id, req.user, req.body || {})),
   )
   router.use(verificationError)
   return router

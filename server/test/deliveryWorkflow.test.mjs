@@ -11,9 +11,13 @@ import { DeliveryLocation } from '../src/modules/delivery/delivery-location.mode
 import { Notification } from '../src/modules/notifications/notification.model.mjs'
 import { AuditLog } from '../src/modules/admin/audit-log.model.mjs'
 import { VerificationRate } from '../src/modules/otp/verification-rate.model.mjs'
+import { CommissionEntry } from '../src/modules/payments/commission.model.mjs'
 import { createDeliveryTasks, broadcastAvailableTasks, assignDelivery, acceptTask, listTasks, SEARCH_RADII,
-  markReady, sendTaskOtp, verifyTaskOtp, progressTask, quoteReturn, requestReturn,
+  markReady, sendTaskOtp, verifyTaskOtp, progressTask, quoteReturn, requestReturn, cancelReturnCollection,
+  cancelDeliveryTasks, releaseTask,
 } from '../src/modules/delivery/delivery-task.service.mjs'
+import { initiateVerification, verifyHandover, preparePickup } from '../src/modules/rentals/handover.service.mjs'
+import { cancellationEligibility } from '../src/modules/rentals/cancellation.service.mjs'
 import { sendSelfReturn, verifySelfReturn, selfReturnState } from '../src/modules/rentals/self-return.service.mjs'
 
 let mongo, customer, shop, rider, otherRider, rental, product
@@ -38,14 +42,14 @@ before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } })
   await mongoose.connect(mongo.getUri('delivery_workflow_tests'))
   await Promise.all([User, RentalRequest, Product, DeliveryTask, PartnerPresence, DeliveryLocation, Notification,
-    AuditLog, VerificationRate].map((model) => model.init()))
+    AuditLog, VerificationRate, CommissionEntry].map((model) => model.init()))
 }, { timeout: 180000 })
 after(async () => { await mongoose.disconnect(); if (mongo) await mongo.stop() })
 beforeEach(async () => {
   mock.restoreAll()
   emails = []
   await Promise.all([User, RentalRequest, Product, DeliveryTask, PartnerPresence, DeliveryLocation,
-    Notification, AuditLog, VerificationRate].map((model) => model.deleteMany({})))
+    Notification, AuditLog, VerificationRate, CommissionEntry].map((model) => model.deleteMany({})))
   customer = await account('customer', 'user')
   shop = await account('shop', 'rental_shop')
   rider = await account('rider', 'delivery_partner')
@@ -117,6 +121,10 @@ test('search exhausts without inventing a rider and can restart without duplicat
     await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'search.nextExpansionAt': new Date(0) } })
     await broadcastAvailableTasks()
   }
+  // At the widest radius the search keeps waiting for riders until its window ends.
+  assert.equal((await DeliveryTask.findById(task._id)).search.state, 'searching')
+  await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'search.nextExpansionAt': new Date(0), 'search.startedAt': new Date(Date.now() - 16 * 60000) } })
+  await broadcastAvailableTasks()
   const exhausted = await DeliveryTask.findById(task._id)
   assert.equal(exhausted.search.state, 'exhausted')
   assert.equal(exhausted.assignedPartner, null)
@@ -128,20 +136,23 @@ test('search exhausts without inventing a rider and can restart without duplicat
 })
 
 test('all four handovers use the requested email recipient and verifier, consume real random codes once, and update rental custody', async () => {
+  await RentalRequest.updateOne({ _id: rental._id }, { $set: { commissionVersion: 1, 'shipments.0.returnFee': 100 } })
   const task = await assign()
   await markReady(task._id, shop)
   await expectCode(progressTask(task._id, 'delivered', rider), 'OTP_REQUIRED')
-  const pickup = await sendTaskOtp(task._id, 'shop_pickup', rider, capture)
+  const pickup = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
   assert.equal(emails.at(-1).email, rider.email)
   await expectCode(verifyTaskOtp(task._id, input(pickup, 'shop_pickup'), rider), 'WRONG_VERIFIER')
   await verifyTaskOtp(task._id, input(pickup, 'shop_pickup'), shop)
   assert.equal((await DeliveryTask.findById(task._id)).status, 'picked_up')
+  assert.equal((await RentalRequest.findById(rental._id)).status, 'confirmed')
   await expectCode(verifyTaskOtp(task._id, input(pickup, 'shop_pickup'), shop), 'CODE_UNAVAILABLE')
   const delivery = await sendTaskOtp(task._id, 'customer_delivery', rider, capture)
   assert.equal(emails.at(-1).email, customer.email)
   await verifyTaskOtp(task._id, input(delivery, 'customer_delivery'), rider)
   assert.equal((await RentalRequest.findById(rental._id)).status, 'active')
   assert.equal((await reloadActor(rider)).activeDeliveryTask, undefined)
+  assert.equal((await CommissionEntry.findOne({ kind: 'delivery', direction: 'delivery' })).commissionMinor, 210)
   mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ features: [{ properties: {
     distance: 5100, time: 660, distance_units: 'meters' } }] }), { status: 200 }))
   const quote = await quoteReturn(rental._id, customer, { collection: destination })
@@ -152,23 +163,25 @@ test('all four handovers use the requested email recipient and verifier, consume
   assert.equal(returning.distanceKm, 5.1)
   assert.equal(await DeliveryTask.countDocuments({ rentalId: rental._id, direction: 'return' }), 1)
   await acceptTask(returning._id, await reloadActor(rider))
-  const collection = await sendTaskOtp(returning._id, 'customer_return', rider, capture)
-  assert.equal(emails.at(-1).email, customer.email)
-  await verifyTaskOtp(returning._id, input(collection, 'customer_return'), rider)
+  const collection = await sendTaskOtp(returning._id, 'customer_return', customer, capture)
+  assert.equal(emails.at(-1).email, rider.email)
+  await verifyTaskOtp(returning._id, input(collection, 'customer_return'), customer)
   assert.equal((await RentalRequest.findById(rental._id)).status, 'return_in_transit')
   const receipt = await sendTaskOtp(returning._id, 'shop_return', rider, capture)
-  assert.equal(emails.at(-1).email, rider.email)
-  await expectCode(verifyTaskOtp(returning._id, input(receipt, 'shop_return'), rider), 'WRONG_VERIFIER')
-  await verifyTaskOtp(returning._id, input(receipt, 'shop_return'), shop)
+  assert.equal(emails.at(-1).email, shop.email)
+  await expectCode(verifyTaskOtp(returning._id, input(receipt, 'shop_return'), shop), 'WRONG_VERIFIER')
+  await verifyTaskOtp(returning._id, input(receipt, 'shop_return'), rider)
   assert.equal((await RentalRequest.findById(rental._id)).status, 'returned')
   assert.equal((await DeliveryTask.findById(returning._id)).verifications.length, 2)
+  assert.equal(await CommissionEntry.countDocuments({ rentalId: rental._id }), 2)
+  assert.equal((await CommissionEntry.findOne({ kind: 'delivery', direction: 'return' })).commissionMinor, 100)
   assert.equal((await reloadActor(rider)).activeDeliveryTask, undefined)
 })
 
 test('expired, incorrect and failed-email challenges never advance custody', async () => {
   const task = await assign()
   await markReady(task._id, shop)
-  const challenge = await sendTaskOtp(task._id, 'shop_pickup', rider, capture)
+  const challenge = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
   const wrong = lastCode() === '000000' ? '111111' : '000000'
   for (let attempt = 0; attempt < 5; attempt++)
     await expectCode(verifyTaskOtp(task._id, input(challenge, 'shop_pickup', wrong), shop), 'WRONG_CODE')
@@ -176,7 +189,7 @@ test('expired, incorrect and failed-email challenges never advance custody', asy
   await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'otp.expiresAt': new Date(0) } })
   await expectCode(verifyTaskOtp(task._id, input(challenge, 'shop_pickup'), shop), 'OTP_EXPIRED')
   await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'otp.sentAt': new Date(0) } })
-  await expectCode(sendTaskOtp(task._id, 'shop_pickup', rider, async () => { throw new Error('Email offline') }), 'EMAIL_FAILED')
+  await expectCode(sendTaskOtp(task._id, 'shop_pickup', shop, async () => { throw new Error('Email offline') }), 'OTP_DELIVERY_FAILED')
   assert.equal((await DeliveryTask.findById(task._id).select('+otp')).otp.status, 'failed')
   assert.equal((await DeliveryTask.findById(task._id)).status, 'assigned')
 })
@@ -208,10 +221,149 @@ test('self pickup rentals can choose partner return; tampered routes and competi
   mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ features: [{ properties: {
     distance: 7200, time: 900, distance_units: 'meters' } }] }), { status: 200 }))
   const quote = await quoteReturn(rental._id, customer, { collection: destination })
+  // No return fee was agreed at booking, so the 7.2 km trip is priced at LKR 50/km now.
+  assert.equal(quote.charge, 360)
   await expectCode(requestReturn(rental._id, customer, { quoteToken: quote.quoteToken + 'x' }), 'QUOTE_REQUIRED')
+  await expectCode(requestReturn(rental._id, customer, { quoteToken: quote.quoteToken }), 'DEPOSIT_INSUFFICIENT')
+  await RentalRequest.updateOne({ _id: rental._id }, { $set: { 'payment.depositHeld': 1000 } })
   await requestReturn(rental._id, customer, { quoteToken: quote.quoteToken })
+  const charged = await RentalRequest.findById(rental._id)
+  assert.deepEqual(charged.payment.adjustments.map((a) => [a.type, a.amount]), [['return_collection', 360]])
   const task = await DeliveryTask.findOne({ rentalId: rental._id, direction: 'return' })
+  assert.equal(task.fee, 360, 'the rider is paid for the collection')
   assert.equal(task.distanceKm, 7.2)
   assert.deepEqual(task.pickup.location.coordinates, destination.location.coordinates)
   await expectCode(sendSelfReturn(rental._id, customer, shop._id, capture), 'RETURN_IN_PROGRESS')
+})
+
+test('self pickup is scoped to each shop and starts the rental only after all recipient receipts are verified', async () => {
+  const secondShop = await account('pickup-second-shop', 'rental_shop')
+  const second = await Product.create({ title: 'Lens', category: 'Cameras', description: 'Lens', dailyRate: 500,
+    createdBy: secondShop._id, providerId: secondShop._id, photos: ['/test-lens.jpg'] })
+  await RentalRequest.updateOne({ _id: rental._id }, { $set: { deliveryMethod: 'pickup', requiresPickupPreparation: true },
+    $push: { items: { productId: second._id, providerId: secondShop._id, title: second.title, decision: 'accepted' } } })
+  await preparePickup({ rentalId: rental._id, actor: shop })
+  const first = await initiateVerification({ rentalId: rental._id, type: 'pickup', actor: shop, sendEmail: capture })
+  await expectCode(verifyHandover({ rentalId: rental._id, type: 'pickup', actor: secondShop, challengeId: first.challengeId, code: lastCode() }), 'PICKUP_NOT_READY')
+  await verifyHandover({ rentalId: rental._id, type: 'pickup', actor: shop, challengeId: first.challengeId, code: lastCode() })
+  let stored = await RentalRequest.findById(rental._id)
+  assert.equal(stored.status, 'confirmed')
+  assert.ok(stored.items[0].pickupVerifiedAt)
+  assert.equal(cancellationEligibility(stored, 24).allowed, false)
+  assert.equal(stored.items[1].pickupVerifiedAt, undefined)
+  await expectCode(initiateVerification({ rentalId: rental._id, type: 'pickup', actor: shop, sendEmail: capture }), 'ALREADY_VERIFIED')
+  await preparePickup({ rentalId: rental._id, actor: secondShop })
+  const next = await initiateVerification({ rentalId: rental._id, type: 'pickup', actor: secondShop, sendEmail: capture })
+  await verifyHandover({ rentalId: rental._id, type: 'pickup', actor: secondShop, challengeId: next.challengeId, code: lastCode() })
+  stored = await RentalRequest.findById(rental._id)
+  assert.equal(stored.status, 'active')
+  assert.ok(stored.items.every((i) => i.pickupVerifiedAt))
+  assert.equal(stored.statusHistory.filter((e) => e.action === 'pickup.verified').length, 2)
+})
+
+test('private OTP notifications match email recipients and never appear in another task participant inbox', async () => {
+  const task = await assign()
+  await markReady(task._id, shop)
+  await expectCode(sendTaskOtp(task._id, 'shop_pickup', rider, capture), 'WRONG_VERIFIER')
+  const pickup = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
+  const code = lastCode()
+  const recipient = await listTasks(rider)
+  assert.ok(recipient.tasks[0].otpNotice.body.includes(code))
+  assert.equal(recipient.tasks[0].canSendOtp, false)
+  for (const actor of [shop, customer, otherRider])
+    assert.equal(JSON.stringify(await listTasks(actor)).includes(code), false)
+  await verifyTaskOtp(task._id, input(pickup, 'shop_pickup'), shop)
+  assert.equal(await Notification.countDocuments({ type: 'handover_otp' }), 0)
+})
+
+test('notification failure after delivery email invalidates the code without advancing custody', async () => {
+  const task = await assign()
+  await markReady(task._id, shop)
+  mock.method(Notification, 'updateOne', async () => { throw new Error('Inbox unavailable') })
+  await expectCode(sendTaskOtp(task._id, 'shop_pickup', shop, capture), 'OTP_DELIVERY_FAILED')
+  const saved = await DeliveryTask.findById(task._id).select('+otp')
+  assert.equal(saved.otp.status, 'failed')
+  assert.equal(saved.otp.hash, undefined)
+  assert.equal(saved.status, 'assigned')
+  assert.equal((await RentalRequest.findById(rental._id)).status, 'confirmed')
+})
+
+test('an unaccepted collection can switch to self return, releasing the charge; a repeat request is charged again', async () => {
+  await RentalRequest.updateOne({ _id: rental._id }, { $set: { status: 'active', deliveryMethod: 'pickup',
+    pickupVerifiedAt: new Date(), shipments: [], 'payment.depositHeld': 1000 }, $unset: { deliveryWorkflowVersion: 1, deliveryDestination: 1 } })
+  mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ features: [{ properties: {
+    distance: 7200, time: 900, distance_units: 'meters' } }] }), { status: 200 }))
+  await requestReturn(rental._id, customer, { quoteToken: (await quoteReturn(rental._id, customer, { collection: destination })).quoteToken })
+  assert.equal((await RentalRequest.findById(rental._id)).shipments[0].returnFeePrepaid, false)
+  await expectCode(cancelReturnCollection(rental._id, rider), 'CUSTOMER_REQUIRED')
+  await cancelReturnCollection(rental._id, customer)
+  const reset = await RentalRequest.findById(rental._id)
+  assert.equal(reset.payment.adjustments.length, 0, 'the collection charge is released')
+  assert.equal(reset.returnMethod, undefined); assert.equal(reset.deliveryReturnRequestedAt, undefined)
+  assert.equal(await DeliveryTask.countDocuments({ rentalId: rental._id, direction: 'return' }), 0)
+  assert.equal((await selfReturnState(rental._id, customer)).handovers.length, 1, 'self return is open again')
+  // The route fee charged last time was not paid at booking, so a new request charges it again.
+  const again = await quoteReturn(rental._id, customer, { collection: destination })
+  assert.equal(again.charge, 360)
+  await presence(rider, destination.location)
+  await requestReturn(rental._id, customer, { quoteToken: again.quoteToken })
+  const task = await DeliveryTask.findOne({ rentalId: rental._id, direction: 'return' })
+  assert.equal(task.status, 'available'); assert.equal(task.fee, 360)
+  await acceptTask(task._id, rider)
+  await expectCode(cancelReturnCollection(rental._id, customer), 'RIDER_ASSIGNED')
+})
+
+test('releasing a booking frees the rider and invalidates any pending handover code', async () => {
+  const task = await assign()
+  assert.ok((await reloadActor(rider)).activeDeliveryTask)
+  await markReady(task._id, shop)
+  const sent = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
+  assert.equal(await Notification.countDocuments({ handoverChallengeId: sent.challengeId }), 1)
+  await mongoose.connection.transaction((session) => cancelDeliveryTasks(rental._id, session, 'disputed'))
+  assert.equal((await reloadActor(rider)).activeDeliveryTask, undefined)
+  assert.equal((await DeliveryTask.findById(task._id)).status, 'cancelled')
+  assert.equal(await Notification.countDocuments({ handoverChallengeId: sent.challengeId }), 0)
+  assert.match((await Notification.findOne({ userId: rider._id, title: 'Trip cancelled' })).body, /under review/)
+})
+
+test('a rider who comes online after the widest radius still receives the request', async () => {
+  await assignDelivery(rental._id, customer)
+  const task = await DeliveryTask.findOne({ rentalId: rental._id })
+  for (let round = 0; round < SEARCH_RADII.length + 2; round++) {
+    await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'search.nextExpansionAt': new Date(0) } })
+    await broadcastAvailableTasks()
+  }
+  await presence(rider)
+  await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'search.nextExpansionAt': new Date(0) } })
+  await broadcastAvailableTasks()
+  const offered = await DeliveryTask.findById(task._id)
+  assert.equal(offered.search.state, 'searching')
+  assert.deepEqual(offered.offeredPartnerIds.map(String), [String(rider._id)])
+  await acceptTask(task._id, rider)
+})
+
+test('a trip stuck before collection can be released by the rider or the shop, freeing the rider', async () => {
+  const task = await assign()
+  await markReady(task._id, shop)
+  const sent = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
+  await expectCode(releaseTask(task._id, customer), 'RELEASE_FORBIDDEN')
+  await expectCode(releaseTask(task._id, otherRider), 'TASK_NOT_FOUND')
+  await releaseTask(task._id, await reloadActor(rider))
+  const reopened = await DeliveryTask.findById(task._id)
+  assert.equal(reopened.status, 'available'); assert.equal(reopened.assignedPartner, null)
+  assert.equal(reopened.search.state, 'searching')
+  assert.deepEqual(reopened.declinedPartnerIds.map(String), [String(rider._id)], 'the rider is not offered it again')
+  assert.ok(reopened.readyAt, 'the shop does not need to prepare the items again')
+  assert.equal((await reloadActor(rider)).activeDeliveryTask, undefined)
+  assert.equal(await Notification.countDocuments({ handoverChallengeId: sent.challengeId }), 0)
+  const booking = await RentalRequest.findById(rental._id)
+  assert.equal(booking.items[0].assignedPartner, undefined); assert.equal(booking.items[0].deliveryStatus, 'assigned')
+  // Another rider takes it; the shop can release that rider too, but not once the items are collected.
+  await presence(otherRider)
+  await DeliveryTask.updateOne({ _id: task._id }, { $set: { 'search.nextExpansionAt': new Date(0) } })
+  await broadcastAvailableTasks()
+  await acceptTask(task._id, otherRider)
+  const code = await sendTaskOtp(task._id, 'shop_pickup', shop, capture)
+  await verifyTaskOtp(task._id, input(code, 'shop_pickup'), shop)
+  await expectCode(releaseTask(task._id, shop), 'IN_CUSTODY')
 })

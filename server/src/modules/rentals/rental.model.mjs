@@ -18,6 +18,9 @@ const verificationSchema = new mongoose.Schema(
       required: true,
     },
     initiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     verifiedAt: Date,
   },
   { _id: false },
@@ -31,11 +34,14 @@ const rentalRequestSchema = new mongoose.Schema(
         productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
         quantity: { type: Number, default: 1, min: 1, max: 1 },
         providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        providerRole: { type: String, enum: ['admin', 'rental_shop', 'user', 'delivery_partner'] },
         title: String,
         dailyRate: Number,
         hourlyRate: Number,
         weeklyRate: Number,
         rentalAmount: Number,
+        // Loyalty level reward already taken off rentalAmount.
+        loyaltyDiscount: Number,
         depositAmount: Number,
         billingUnit: { type: String, enum: ['day', 'hour'], default: 'day' },
         billableHours: Number,
@@ -43,6 +49,20 @@ const rentalRequestSchema = new mongoose.Schema(
         decisionReason: { type: String, maxlength: 500, default: '' },
         assignedPartner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         deliveryStatus: { type: String, enum: deliveryStages, default: 'assigned' },
+        pickupReadyAt: Date,
+        pickupVerifiedAt: Date,
+        pickupVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      },
+    ],
+    // Items a shop declined when it approved the rest; kept for history after repricing.
+    declinedItems: [
+      {
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        title: String,
+        rentalAmount: Number,
+        depositAmount: Number,
+        decisionReason: String,
       },
     ],
     startDate: { type: Date, required: true },
@@ -67,6 +87,7 @@ const rentalRequestSchema = new mongoose.Schema(
       expiresAt: Date,
       verifiedAt: Date,
       verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      initiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     }],
     address: String,
     addressSnapshot: addressSchema,
@@ -88,6 +109,8 @@ const rentalRequestSchema = new mongoose.Schema(
         returnBaseFee: Number,
         returnPerKm: Number,
         returnFee: Number,
+        // false when the collection was charged to the deposit at return time, not paid at booking.
+        returnFeePrepaid: Boolean,
         returnDistanceKm: Number,
         returnEtaMinutes: Number,
         quotedAt: Date,
@@ -105,6 +128,14 @@ const rentalRequestSchema = new mongoose.Schema(
     total: { type: Number, required: true },
     couponCode: { type: String, default: '' },
     discountAmount: { type: Number, default: 0, min: 0 },
+    // One loyalty level reward used on one item; restored if that item or the booking is dropped.
+    loyaltyReward: {
+      productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      title: String,
+      percent: Number,
+      amount: Number,
+      status: { type: String, enum: ['applied', 'restored'] },
+    },
     status: {
       type: String,
       enum: [
@@ -138,6 +169,9 @@ const rentalRequestSchema = new mongoose.Schema(
         previousStatus: String,
         action: String,
         verificationId: String,
+        senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
         at: { type: Date, default: Date.now },
         note: { type: String, maxlength: 500 },
         by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -166,6 +200,7 @@ const rentalRequestSchema = new mongoose.Schema(
     },
     invoiceNumber: { type: String, sparse: true, unique: true },
     invoiceIssuedAt: Date,
+    commissionVersion: Number,
     payment: {
       status: {
         type: String,
@@ -182,7 +217,7 @@ const rentalRequestSchema = new mongoose.Schema(
       refundedAt: Date,
       adjustments: [
         {
-          type: { type: String, enum: ['late_fee', 'damage_fee'] },
+          type: { type: String, enum: ['late_fee', 'damage_fee', 'return_collection'] },
           amount: { type: Number, min: 0 },
           note: { type: String, maxlength: 500 },
           createdAt: { type: Date, default: Date.now },

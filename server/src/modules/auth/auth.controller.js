@@ -1,221 +1,152 @@
 import bcrypt from 'bcryptjs'
-import { randomInt, timingSafeEqual } from 'node:crypto'
+import mongoose from 'mongoose'
+import { randomInt } from 'node:crypto'
 import { User } from '../users/user.model.mjs'
 import { PendingRegistration } from './pending-registration.model.mjs'
 import { sendRegistrationOtp } from '../../config/mailer.js'
 import { createSession } from '../../middleware/auth.mjs'
-
 import { hashOtp } from '../otp/registration-otp.service.mjs'
+import {
+  authError, authHandler, authHash, authRate, challengeTimes, emailValue,
+  matchesHash, newProof, OTP_TTL, registrationCookie, registrationCookieOptions, validEmail, validatePassword,
+} from './auth-security.service.mjs'
 
-export const sendRegistrationCode = async (req, res) => {
-  try {
-    const { username, email, phone } = req.body
-    const accountType = req.body.accountType === 'rental_shop' ? 'rental_shop' : 'user'
-    const shopName = typeof req.body.shopName === 'string' ? req.body.shopName.trim() : ''
+export function createAuthHandlers({ sendEmail = sendRegistrationOtp } = {}) {
+  return {
+    sendRegistrationCode: authHandler(async (req, res) => {
+      const email = emailValue(req.body.email)
+      const username = typeof req.body.username === 'string' ? req.body.username.trim() : ''
+      const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : ''
+      const accountType = req.body.accountType === 'rental_shop' ? 'rental_shop' : 'user'
+      const shopName = typeof req.body.shopName === 'string' ? req.body.shopName.trim() : ''
+      if (username.length < 2 || username.length > 50)
+        throw authError(400, 'User name must be between 2 and 50 characters.')
+      if (!validEmail(email)) throw authError(400, 'Enter a valid email address.')
+      if (phone.length < 7 || phone.length > 24 || !/^[+\d().\s-]+$/.test(phone))
+        throw authError(400, 'Enter a valid contact phone number.')
+      if (accountType === 'rental_shop' && (!shopName || shopName.length > 100))
+        throw authError(400, 'Enter your rental shop name (up to 100 characters).')
+      await authRate(req, 'registration-send', email, true)
+      if (await User.exists({ $or: [{ email }, { username }] }))
+        throw authError(409, 'An account already uses that email or username. Please sign in.')
+      const otp = String(randomInt(0, 1_000_000)).padStart(6, '0'), now = new Date()
+      const otpHash = hashOtp(email, otp)
+      await PendingRegistration.findOneAndUpdate({ email }, {
+        $set: {
+          username, email, phone, accountType, shopName, otpHash,
+          otpExpiresAt: new Date(now.getTime() + OTP_TTL), otpAttempts: 0,
+          lastOtpSentAt: now, verifiedAt: null,
+          expiresAt: new Date(now.getTime() + 30 * 60_000),
+        },
+        $unset: { verificationTokenHash: 1 },
+      }, { upsert: true, returnDocument: 'after', runValidators: true })
+      try {
+        await sendEmail(email, otp)
+      } catch {
+        await PendingRegistration.deleteOne({ email, otpHash })
+        throw authError(503, 'We could not send your verification email. Please try again shortly.')
+      }
+      res.json({ message: 'Verification code sent to your email.', ...challengeTimes(now) })
+    }),
 
-    if (
-      typeof username !== 'string' ||
-      typeof email !== 'string' ||
-      typeof phone !== 'string' ||
-      !username.trim() ||
-      !email.trim() ||
-      !phone.trim()
-    ) {
-      return res.status(400).json({ message: 'Username, email, and phone are required.' })
-    }
-    if (accountType === 'rental_shop' && !shopName)
-      return res.status(400).json({ message: 'Enter your rental shop name.' })
-
-    const normalizedEmail = email.trim().toLowerCase()
-    if (await User.exists({ email: normalizedEmail })) {
-      return res.status(409).json({ message: 'An account already uses this email.' })
-    }
-
-    const previousPending = await PendingRegistration.findOne({ email: normalizedEmail })
-    if (previousPending?.verifiedAt) {
-      return res
-        .status(409)
-        .json({ message: 'This email is already verified. Continue creating your account.' })
-    }
-    if (
-      previousPending?.lastOtpSentAt &&
-      Date.now() - previousPending.lastOtpSentAt.getTime() < 60_000
-    ) {
-      return res.status(429).json({ message: 'Wait one minute before requesting another code.' })
-    }
-
-    const otp = String(randomInt(0, 1_000_000)).padStart(6, '0')
-    const now = new Date()
-
-    await PendingRegistration.findOneAndUpdate(
-      { email: normalizedEmail },
-      {
-        username: username.trim(),
-        email: normalizedEmail,
-        phone: phone.trim(),
-        accountType,
-        shopName,
-        otpHash: hashOtp(normalizedEmail, otp),
-        otpExpiresAt: new Date(now.getTime() + 10 * 60 * 1000),
-        otpAttempts: 0,
-        lastOtpSentAt: now,
-        verifiedAt: null,
-        expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
-      },
-      { upsert: true, new: true, runValidators: true },
-    )
-
-    try {
-      await sendRegistrationOtp(normalizedEmail, otp)
-    } catch (mailError) {
-      await PendingRegistration.deleteOne({ email: normalizedEmail })
-      throw mailError
-    }
-    return res.status(200).json({ message: 'Verification code sent to your email.' })
-  } catch (error) {
-    console.error('Send registration OTP error:', error)
-    const message =
-      process.env.NODE_ENV === 'production'
-        ? 'Could not send the verification code. Check the server email settings.'
-        : `Registration step failed: ${error.message}`
-    return res.status(500).json({ message })
-  }
-}
-
-export const verifyRegistrationCode = async (req, res) => {
-  try {
-    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
-    const otp = typeof req.body.otp === 'string' ? req.body.otp.trim() : ''
-
-    if (!email || !/^\d{6}$/.test(otp)) {
-      return res.status(400).json({ message: 'Enter the six-digit code from your email.' })
-    }
-
-    const pending = await PendingRegistration.findOne({ email })
-    if (!pending || pending.expiresAt <= new Date()) {
-      return res.status(400).json({ message: 'Registration expired. Please start again.' })
-    }
-    if (pending.verifiedAt) {
-      return res.status(200).json({ message: 'Email already verified.' })
-    }
-    if (pending.otpExpiresAt <= new Date()) {
-      return res.status(400).json({ message: 'That code expired. Request a new one.' })
-    }
-    if (pending.otpAttempts >= 5) {
-      return res.status(429).json({ message: 'Too many incorrect codes. Request a new code.' })
-    }
-
-    const expected = Buffer.from(pending.otpHash, 'hex')
-    const submitted = Buffer.from(hashOtp(email, otp), 'hex')
-    if (!timingSafeEqual(expected, submitted)) {
-      pending.otpAttempts += 1
-      await pending.save()
-      return res.status(400).json({ message: 'That code is incorrect.' })
-    }
-
-    pending.verifiedAt = new Date()
-    pending.otpHash = 'verified'
-    await pending.save()
-    return res.status(200).json({ message: 'Email verified.' })
-  } catch (error) {
-    console.error('Verify registration OTP error:', error)
-    return res.status(500).json({ message: 'Could not verify the code.' })
-  }
-}
-
-export const completeRegistration = async (req, res) => {
-  try {
-    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
-    const { password } = req.body
-
-    if (!email || typeof password !== 'string') {
-      return res.status(400).json({ message: 'Email and password are required.' })
-    }
-    if (password.length < 10) {
-      return res.status(400).json({ message: 'Password must be at least 10 characters.' })
-    }
-
-    const pending = await PendingRegistration.findOne({ email })
-    if (!pending?.verifiedAt || pending.expiresAt <= new Date()) {
-      return res.status(400).json({ message: 'Verify your email before creating the account.' })
-    }
-    if (await User.exists({ $or: [{ email }, { username: pending.username }] })) {
-      return res.status(409).json({ message: 'An account already uses that email or username.' })
-    }
-
-    const user = await User.create({
-      username: pending.username,
-      email: pending.email,
-      phone: pending.phone,
-      password: await bcrypt.hash(password, 12),
-      role: pending.accountType === 'rental_shop' ? 'rental_shop' : 'user',
-      shopName: pending.shopName || '',
-      shopStatus: pending.accountType === 'rental_shop' ? 'pending' : 'not_applicable',
-    })
-
-    await PendingRegistration.deleteOne({ _id: pending._id })
-    return res.status(201).json({
-      message:
-        user.role === 'rental_shop'
-          ? 'Account created. Your rental shop is awaiting admin approval.'
-          : 'Account created successfully.',
-      userId: user._id,
-    })
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({ message: 'An account already uses that username or email.' })
-    }
-    console.error('Complete registration error:', error)
-    return res.status(500).json({ message: 'Could not create the account.' })
-  }
-}
-
-export const login = async (req, res) => {
-  try {
-    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
-    const { password } = req.body
-
-    if (!email || typeof password !== 'string' || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' })
-    }
-
-    const user = await User.findOne({ email })
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ message: 'Email or password is incorrect.' })
-    }
-
-    if (
-      process.env.ADMIN_EMAIL &&
-      email === process.env.ADMIN_EMAIL.trim().toLowerCase() &&
-      user.role !== 'admin'
-    ) {
-      user.role = 'admin'
-      user.shopStatus = 'not_applicable'
-      await user.save()
-    }
-    if (!user.active)
-      return res.status(403).json({ message: 'This account has been suspended. Contact support.' })
-    if (user.role === 'rental_shop' && user.shopStatus !== 'approved') {
-      return res.status(403).json({
-        message: `Your rental shop is ${user.shopStatus}. You can sign in after an administrator approves it.`,
+    verifyRegistrationCode: authHandler(async (req, res) => {
+      const email = emailValue(req.body.email), otp = req.body.otp
+      if (!validEmail(email) || typeof otp !== 'string' || !/^\d{6}$/.test(otp))
+        throw authError(400, 'Enter the six-digit code from your email.')
+      await authRate(req, 'registration-verify', email)
+      const pending = await PendingRegistration.findOneAndUpdate({
+        email, verifiedAt: null, expiresAt: { $gt: new Date() },
+        otpExpiresAt: { $gt: new Date() }, otpAttempts: { $lt: 5 },
+      }, { $inc: { otpAttempts: 1 } }, { returnDocument: 'after' })
+      if (!pending) throw authError(400, 'This code expired, was already used, or has too many attempts. Request a new code.')
+      if (!matchesHash(pending.otpHash, hashOtp(email, otp)))
+        throw authError(400, 'That code is incorrect. Please try again.')
+      const registrationToken = newProof()
+      const verified = await PendingRegistration.updateOne({
+        _id: pending._id, otpHash: pending.otpHash, verifiedAt: null,
+        expiresAt: { $gt: new Date() }, otpExpiresAt: { $gt: new Date() },
+      }, { $set: {
+        verifiedAt: new Date(), otpHash: 'verified',
+        verificationTokenHash: authHash('registration', registrationToken),
+      } })
+      if (!verified.modifiedCount) throw authError(400, 'This code has already been used. Request a new code.')
+      // Keep the existing email/password completion contract usable by older
+      // same-origin clients, without trusting a public verifiedAt flag.
+      res.cookie('rentease_registration', registrationToken, {
+        ...registrationCookieOptions(req), maxAge: pending.expiresAt.getTime() - Date.now(),
       })
-    }
+      res.json({ message: 'Email verified.', registrationToken, expiresAt: pending.expiresAt })
+    }),
 
-    return res.status(200).json({
-      message: 'Signed in successfully.',
-      token: createSession(user._id),
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        shopName: user.shopName,
-        shopStatus: user.shopStatus,
-      },
-    })
-  } catch (error) {
-    console.error('Login error:', error)
-    return res.status(500).json({ message: 'Could not sign in. Please try again.' })
+    completeRegistration: authHandler(async (req, res) => {
+      const email = emailValue(req.body.email), { password, confirmPassword } = req.body
+      const registrationToken = req.body.registrationToken || registrationCookie(req)
+      if (!validEmail(email)) throw authError(400, 'Enter a valid email address.')
+      validatePassword(password, confirmPassword)
+      await authRate(req, 'registration-complete', email)
+      if (typeof registrationToken !== 'string' || registrationToken.length !== 43)
+        throw authError(400, 'Verify your email before creating the account.')
+      const proof = {
+        email, verifiedAt: { $ne: null }, expiresAt: { $gt: new Date() },
+        verificationTokenHash: authHash('registration', registrationToken),
+      }
+      if (!await PendingRegistration.exists(proof))
+        throw authError(400, 'Registration verification expired. Please request a new code.')
+      const passwordHash = await bcrypt.hash(password, 12)
+      let user
+      // Consume verification and create the account together, avoiding partial registration.
+      await mongoose.connection.transaction(async (session) => {
+        const claimed = await PendingRegistration.findOneAndDelete({ ...proof, expiresAt: { $gt: new Date() } }, { session })
+        if (!claimed) throw authError(400, 'Registration verification expired or was already used.')
+        ;[user] = await User.create([{
+          username: claimed.username, email: claimed.email, phone: claimed.phone,
+          password: passwordHash, role: claimed.accountType === 'rental_shop' ? 'rental_shop' : 'user',
+          shopName: claimed.shopName || '',
+          shopStatus: claimed.accountType === 'rental_shop' ? 'pending' : 'not_applicable',
+        }], { session })
+      })
+      res.clearCookie('rentease_registration', registrationCookieOptions(req))
+      res.status(201).json({
+        message: user.role === 'rental_shop'
+          ? 'Account created successfully. Your rental shop is awaiting admin approval. Please sign in after approval.'
+          : 'Account created successfully. Please sign in.',
+        userId: user._id,
+      })
+    }),
+  }
+}
+
+export const { sendRegistrationCode, verifyRegistrationCode, completeRegistration } = createAuthHandlers()
+
+export const login = authHandler(async (req, res) => {
+  const email = emailValue(req.body.email), { password } = req.body
+  if (!email || typeof password !== 'string' || !password)
+    throw authError(400, 'Email and password are required.')
+  if (password.length > 128 || email.length > 254)
+    throw authError(401, 'Email or password is incorrect.')
+  // Key the account limit by email and IP, so strangers cannot lock someone out of their own
+  // account by failing logins against it. The per-IP limit inside authRate still applies.
+  await authRate(req, 'login', `${email}|${req.ip || 'unknown'}`)
+  const user = await User.findOne({ email }).select('+sessionVersion')
+  if (!user || !(await bcrypt.compare(password, user.password)))
+    throw authError(401, 'Email or password is incorrect.')
+  res.json(await sessionResult(user))
+})
+
+export async function sessionResult(user) {
+  if (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL.trim().toLowerCase() && user.role !== 'admin') {
+    user.role = 'admin'
+    user.shopStatus = 'not_applicable'
+    await user.save()
+  }
+  if (!user.active) throw authError(403, 'This account has been suspended. Contact support.')
+  if (user.role === 'rental_shop' && user.shopStatus !== 'approved')
+    throw authError(403, `Your rental shop is ${user.shopStatus}. You can sign in after an administrator approves it.`)
+  return {
+    message: 'Signed in successfully.', token: createSession(user._id, user.sessionVersion || 0),
+    user: {
+      id: user._id, username: user.username, email: user.email, phone: user.phone,
+      role: user.role, shopName: user.shopName, shopStatus: user.shopStatus,
+    },
   }
 }

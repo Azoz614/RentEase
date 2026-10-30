@@ -5,7 +5,7 @@ import { createServer } from 'vite'
 import React from 'react'
 import { defaultRentalDates } from '../src/features/rentals/utils/rentalAvailability.js'
 
-let vite, UserHome, render, screen, cleanup, waitFor, act, userEvent
+let vite, UserHome, render, screen, within, cleanup, waitFor, act, userEvent
 const dom = new JSDOM('<!doctype html><html><head><title>Catalog availability</title></head><body></body></html>', { url: 'http://localhost/' })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, HTMLDialogElement: dom.window.HTMLDialogElement, MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle, requestAnimationFrame: (callback) => setTimeout(callback, 0), IS_REACT_ACT_ENVIRONMENT: true })
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true })
@@ -32,7 +32,7 @@ function setup(initialStatus = 'available', identityStatus = 'approved') {
 }
 
 before(async () => {
-  ;({ render, screen, cleanup, waitFor, act } = await import('@testing-library/react'))
+  ;({ render, screen, within, cleanup, waitFor, act } = await import('@testing-library/react'))
   userEvent = (await import('@testing-library/user-event')).default
   vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
   UserHome = (await vite.ssrLoadModule('/src/features/customer/pages/CustomerPage.jsx')).default
@@ -46,19 +46,38 @@ test('available items have valid default dates and can immediately be added to a
   render(React.createElement(UserHome, props))
   const add = await screen.findByRole('button', { name: /Add to request/ })
   assert.equal(add.disabled, false)
-  assert.ok(screen.getByLabelText('Until').value)
+  assert.ok(within(screen.getByRole('region', { name: 'Search rentals' })).getByLabelText('Until').value)
   const query = new URL(calls.find((call) => call.url.startsWith('/api/products')).url, 'http://localhost').searchParams
   assert.ok(new Date(query.get('endDate')) > new Date(query.get('startDate')))
   await user.click(add)
-  assert.ok(screen.getByRole('button', { name: 'Added' }).disabled)
+  const added = screen.getByRole('button', { name: /^Remove .+ from your request$/ })
+  assert.equal(added.disabled, false)
+  assert.match(screen.getByText(/items? in your request/).textContent, /1 item in your request/)
+  // Tapping the added item takes it back out of the request.
+  await user.click(added)
+  assert.ok(await screen.findByRole('button', { name: /Add to request/ }))
+  assert.equal(screen.queryByText(/items? in your request/), null)
 })
 
-test('an unapproved customer is directed to verification instead of submitting a rental request', async () => {
+test('the cart bar clears the whole request after a confirmation', async () => {
+  const { props } = setup()
+  const user = userEvent.setup({ document: dom.window.document })
+  render(React.createElement(UserHome, props))
+  await user.click(await screen.findByRole('button', { name: /Add to request/ }))
+  await user.click(screen.getByRole('button', { name: 'Clear' }))
+  await user.click(screen.getByRole('button', { name: 'Yes, clear' }))
+  assert.equal(screen.queryByText(/items? in your request/), null)
+  assert.ok(screen.getByRole('button', { name: /Add to request/ }))
+})
+
+test('a pending customer can browse and sees approval guidance instead of submitting a rental request', async () => {
   const { props, calls } = setup('available', 'pending')
   const user = userEvent.setup({ document: dom.window.document })
   render(React.createElement(UserHome, props))
   await user.click(await screen.findByRole('button', { name: /Add to request/ }))
-  assert.ok(await screen.findByRole('heading', { name: 'Your submission is safely with the team' }))
+  assert.ok(await screen.findByText(/Your NIC verification is pending/))
+  assert.ok(screen.getByRole('button', { name: 'View progress' }))
+  assert.ok(screen.getByRole('button', { name: /Add to request/ }))
   assert.equal(calls.filter((call) => call.url === '/api/requests' && call.options.method === 'POST').length, 0)
 })
 
@@ -82,7 +101,7 @@ test('after cancellation, returning to the catalog refreshes availability and en
   await user.click(screen.getByRole('button', { name: 'Yes, cancel booking' }))
   assert.ok(await screen.findByRole('heading', { name: 'This booking was cancelled' }))
   const oldCatalogCalls = calls.filter((call) => call.url.startsWith('/api/products')).length
-  await user.click(screen.getByRole('button', { name: 'Explore rentals' }))
+  await user.click(within(screen.getByRole('navigation', { name: 'Rental navigation' })).getByRole('button', { name: 'Explore rentals' }))
   const add = await screen.findByRole('button', { name: /Add to request/ })
   assert.equal(add.disabled, false)
   assert.ok(calls.filter((call) => call.url.startsWith('/api/products')).length > oldCatalogCalls)
@@ -93,12 +112,12 @@ test('clearing a date gives an actionable date prompt rather than a permanently 
   const user = userEvent.setup({ document: dom.window.document })
   render(React.createElement(UserHome, props))
   await screen.findByRole('button', { name: /Add to request/ })
-  await user.clear(screen.getByLabelText('Until'))
+  await user.clear(within(screen.getByRole('region', { name: 'Search rentals' })).getByLabelText('Until'))
   const prompt = await screen.findByRole('button', { name: 'Choose rental dates' })
   assert.equal(prompt.disabled, false)
   await user.click(prompt)
   assert.ok(await screen.findByText(/Choose a return date after the start date/))
-  assert.ok(document.activeElement === screen.getByLabelText('Until'))
+  assert.ok(document.activeElement === within(screen.getByRole('region', { name: 'Search rentals' })).getByLabelText('Until'))
 })
 
 test('refocusing the catalog refreshes new on-rental holds without reloading the page', async () => {

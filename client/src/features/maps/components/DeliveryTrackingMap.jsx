@@ -26,9 +26,25 @@ function loadGoogleMaps(key) {
   return loader
 }
 
+// Once Google rejects the key or fails to load, every tracking map uses Geoapify instead.
+let googleFailed = false
+const failureListeners = new Set()
+function markGoogleFailed() {
+  googleFailed = true
+  failureListeners.forEach((listener) => listener())
+}
+
 export default function DeliveryTrackingMap(props) {
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-  return key ? <GoogleTrackingMap {...props} apiKey={key} /> : <GeoapifyMap {...props} />
+  const [failed, setFailed] = useState(googleFailed)
+  useEffect(() => {
+    const listener = () => setFailed(true)
+    failureListeners.add(listener)
+    // Google still runs its load callback for a bad key, then calls gm_authFailure.
+    window.gm_authFailure = markGoogleFailed
+    return () => failureListeners.delete(listener)
+  }, [])
+  return key && !failed ? <GoogleTrackingMap {...props} apiKey={key} /> : <GeoapifyMap {...props} />
 }
 
 function GoogleTrackingMap({ markers = [], routeGeometry, apiKey }) {
@@ -44,7 +60,7 @@ function GoogleTrackingMap({ markers = [], routeGeometry, apiKey }) {
         zoom: 7, mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID',
         mapTypeControl: false, streetViewControl: false, gestureHandling: 'cooperative' })
       setReady(true)
-    }).catch(() => { if (active) setError('Google Maps is unavailable. Retry or open navigation for directions.') })
+    }).catch(() => { if (active) markGoogleFailed() })
     return () => { active = false; setReady(false); instance.current = null; viewport.current = '' }
   }, [apiKey, attempt])
   const markerData = JSON.stringify(markers)
